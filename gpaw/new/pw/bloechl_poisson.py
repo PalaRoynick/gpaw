@@ -143,9 +143,6 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
             self._neighbors = i[x], j[x], d[x], D[x]
         return self._neighbors
 
-    def dipole_layer_correction(self):
-        return self.poisson_solver.dipole_layer_correction()
-
     def move(self, relpos_ac, atomdist):
         self.relpos_ac = relpos_ac
         self.ghat_aLg.move(relpos_ac, atomdist)

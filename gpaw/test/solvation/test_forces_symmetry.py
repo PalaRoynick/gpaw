@@ -3,9 +3,10 @@ import pytest
 from ase import Atoms
 from ase.units import Pascal, m
 
+from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LeakedDensityInteraction,
-                            LinearDielectric, Power12Potential, SolvationGPAW,
+                            LinearDielectric, Power12Potential,
                             SurfaceInteraction, VolumeInteraction)
 
 h = 0.2

@@ -1,21 +1,38 @@
 """The gpaw.solvation package.
 
 This packages extends GPAW to be used with different
-continuum solvent models.
+continuum solvent models, via the ``Solvation`` extension.
+The legacy-GPAW interface is in ``gpaw.old.solvation``.
 """
 
-from gpaw.solvation.calculator import SolvationGPAW
 from gpaw.solvation.cavity import (ADM12SmoothStepCavity,
                                    EffectivePotentialCavity, ElDensity,
                                    FG02SmoothStepCavity, GradientSurface,
                                    KB51Volume, Power12Potential, SSS09Density)
 from gpaw.solvation.dielectric import CMDielectric, LinearDielectric
+from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.solvation.extension import Solvation
 from gpaw.solvation.interactions import (LeakedDensityInteraction,
                                          SurfaceInteraction, VolumeInteraction)
 
 
+def SolvationGPAW(*args, **kwargs):
+    raise DeprecationWarning(
+        'SolvationGPAW has been removed from gpaw.solvation.\n\n'
+        '1. Use the new interface, with solvation as an extension:\n\n'
+        '       from gpaw import GPAW\n'
+        '       from gpaw.solvation import Solvation\n'
+        '       solvation = Solvation(cavity=..., dielectric=...,\n'
+        '                             interactions=...)\n'
+        '       calc = GPAW(..., extensions=[solvation])\n\n'
+        '   See https://gpaw.readthedocs.io/documentation/extensions/'
+        'solvation/solvation.html\n\n'
+        '2. If you really want to keep using the old interface, use\n\n'
+        '       from gpaw.old.solvation import SolvationGPAW\n')
+
+
 def get_HW14_water_kwargs():
-    """Return kwargs for initializing a SolvationGPAW instance.
+    """Return kwargs for initializing a Solvation instance.
 
     Parameters for water as a solvent as in
     A. Held and M. Walter, J. Chem. Phys. 141, 174108 (2014).
@@ -36,7 +53,8 @@ def get_HW14_water_kwargs():
     return kwargs
 
 
-__all__ = ['SolvationGPAW',
+__all__ = ['Solvation',
+           'GaussianDerivativeDipole',
            'EffectivePotentialCavity',
            'Power12Potential',
            'ElDensity',

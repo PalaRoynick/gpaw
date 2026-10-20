@@ -3,21 +3,10 @@ from ase.units import Bohr, Hartree
 
 from gpaw.io import Reader
 from gpaw.old.calculator import GPAW as OldGPAW
-from gpaw.solvation.hamiltonian import SolvationRealSpaceHamiltonian
+from gpaw.old.solvation.hamiltonian import SolvationRealSpaceHamiltonian
 
 
-def SolvationGPAW(*args, legacy_gpaw=True, **kwargs):
-    if legacy_gpaw:
-        return OldSolvationGPAW(*args, **kwargs)
-    from gpaw import GPAW
-    solvation = dict(name='solvation',
-                     cavity=kwargs.pop('cavity'),
-                     dielectric=kwargs.pop('dielectric'),
-                     interactions=kwargs.pop('interactions', None))
-    return GPAW(*args, **kwargs, extensions=[solvation])
-
-
-class OldSolvationGPAW(OldGPAW):
+class SolvationGPAW(OldGPAW):
     """Subclass of gpaw.GPAW calculator with continuum solvent model.
 
     See also Section III of
@@ -78,7 +67,7 @@ class OldSolvationGPAW(OldGPAW):
                         H2O_layer=efpot.H2O_layer,
                         unsolv_backside=efpot.unsolv_backside)
                 elif efpot.name == 'Power12Potential':
-                    from gpaw.solvation.sjm import Power12Potential
+                    from gpaw.solvation.cavity import Power12Potential
                     effective_potential = Power12Potential(
                         atomic_radii=atomic_radii,
                         u0=efpot.u0)

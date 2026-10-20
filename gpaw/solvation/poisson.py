@@ -1,310 +1,276 @@
-import warnings
+"""Poisson solvers for implicit solvation (a position-dependent dielectric).
+
+For a dipole-corrected version, see ``Solvation(dipolelayer=...)``
+and ``GaussianDerivativeDipole`` in ``gpaw.solvation``.
+
+In fd mode, new GPAW uses the legacy-style ``WeightedFDPoissonSolver``
+from ``gpaw.old.solvation.poisson`` through its ``build()`` method.
+"""
+from math import pi
+from typing import Any
 
 import numpy as np
-from scipy.special import erf
+from ase.units import Ha
 
 from gpaw import PoissonConvergenceError
-from gpaw.fd_operators import Gradient, Laplace
-from gpaw.poisson import BasePoissonSolver, FDPoissonSolver, PoissonSolver
-from gpaw.utilities.gauss import Gaussian
-from gpaw.utilities.timing import NullTimer
-from gpaw.wfd_operators import WeightedFDOperator
+from gpaw.core import PWArray, PWDesc, UGDesc
+from gpaw.mpi import broadcast
+from gpaw.new.poisson import PoissonSolver
+from gpaw.new.pw.poisson import PWPoissonSolver
+from gpaw.old.solvation.poisson import WeightedFDPoissonSolver
+from gpaw.solvation.dielectric import Dielectric
 
 
-class SolvationPoissonSolver(FDPoissonSolver):
-    """Base class for Poisson solvers with spatially varying dielectric.
+def SolvationPoissonSolver(pw, grid, dielectric, **kwargs) -> PoissonSolver:
+    """Poisson solver for continuum solvent systems. Returns the PW or FD
+    version as appropriate; kwargs are passed on to it."""
+    if isinstance(pw, PWDesc):
+        return PWSolvationPoissonSolver(pw, grid, dielectric, **kwargs)
+    else:
+        solver = WeightedFDPoissonSolver(**kwargs)
+        solver.set_dielectric(dielectric)
+        return solver.build(grid, np)
 
-    The Poisson equation
-    div(epsilon(r) grad phi(r)) = -4 pi rho(r)
-    is solved.
+
+class PWSolvationPoissonSolver(PWPoissonSolver):
+    """Poisson solver using conjugate gradient method in reciprocal space.
     """
 
-    def __init__(self, nn=3, relax='J', eps=2e-10, maxiter=1000,
-                 remove_moment=None, use_charge_center=False):
-        if remove_moment is not None:
-            raise NotImplementedError(
-                'Removing arbitrary multipole moments '
-                'is not implemented for SolvationPoissonSolver!')
-        if nn == 'M':
-            raise NotImplementedError(
-                'Mehrstellen stencil is not implemented '
-                'for SolvationPoissonSolver!')
-        super().__init__(nn, relax, eps, maxiter, remove_moment,
-                         use_charge_center=use_charge_center)
+    def __init__(self,
+                 pw: PWDesc,
+                 grid: UGDesc,
+                 dielectric: Dielectric,
+                 rtol: float = 1e-6,
+                 energytol: float = 1e-6,
+                 maxiter: int = 500):
+        """Initialize the conjugate gradient Poisson solver.
 
-    def set_dielectric(self, dielectric):
-        """Set the dielectric.
-
-        Arguments:
-        dielectric -- A Dielectric instance.
+        Parameters
+        ----------
+        pw : PWDesc
+            Plane wave descriptor
+        grid : UGDesc
+            Real-space grid on which the dielectric is defined.
+        dielectric : Dielectric
+            Dielectric object; eps is read from dielectric.eps_gradeps[0] at
+            every solve.
+        rtol : float, optional
+            Relative convergence threshold for conjugate gradient algorithm
+        energytol : float, optional
+            Tolerance for the estimated absolute accuracy of the electrostatic
+            energy, eV. Disable by setting to ``float('inf')``.
+        maxiter : int, optional
+            Maximum number of iterations for the conjugate gradient
+            algorithm before raising ``PoissonConvergenceError``.
         """
+        super().__init__(pw=pw, charge=0.)
         self.dielectric = dielectric
+        self.grid = grid
+        self.pw0 = pw.new(comm=None)  # serial copy
+        self.grid0 = grid.new(comm=None)  # serial copy
+        if pw.comm.rank == 0:
+            self.ekin_g = self.pw0.ekin_G.copy()
+            self.ekin_g[0] = 1.0
 
-    def load_gauss(self, center=None):
-        """Load compensating charge distribution for charged systems.
-
-        See Appendix B of
-        A. Held and M. Walter, J. Chem. Phys. 141, 174108 (2014).
-        """
-        # XXX Check if update is needed (dielectric changed)?
-        epsr, dx_epsr, dy_epsr, dz_epsr = self.dielectric.eps_gradeps
-        gauss = Gaussian(self.gd, center=center)
-        rho_g = gauss.get_gauss(0)
-        phi_g = gauss.get_gauss_pot(0)
-        x, y, z = gauss.xyz
-        fac = 2. * np.sqrt(gauss.a) * np.exp(-gauss.a * gauss.r2)
-        fac /= np.sqrt(np.pi) * gauss.r2
-        fac -= erf(np.sqrt(gauss.a) * gauss.r) / (gauss.r2 * gauss.r)
-        fac *= 2.0 * 1.7724538509055159
-        dx_phi_g = fac * x
-        dy_phi_g = fac * y
-        dz_phi_g = fac * z
-        sp = dx_phi_g * dx_epsr + dy_phi_g * dy_epsr + dz_phi_g * dz_epsr
-        rho = epsr * rho_g - 1. / (4. * np.pi) * sp
-        invnorm = np.sqrt(4. * np.pi) / self.gd.integrate(rho)
-        self.phi_gauss = phi_g * invnorm
-        self.rho_gauss = rho * invnorm
-
-
-class WeightedFDPoissonSolver(SolvationPoissonSolver):
-    """Weighted finite difference Poisson solver with dielectric.
-
-    Following V. M. Sanchez, M. Sued and D. A. Scherlis,
-    J. Chem. Phys. 131, 174108 (2009).
-    """
-
-    def create_laplace(self, gd, scale=1.0, n=1, dtype=float):
-        operators = [Laplace(gd, scale, n, dtype)]
-        operators += [Gradient(gd, j, scale, n, dtype) for j in (0, 1, 2)]
-        return WeightedFDOperator(operators)
-
-    def solve(self, phi, rho, charge=None,
-              maxcharge=1e-6,
-              zero_initial_phi=False, timer=None):
-        self._init()
-        if self.gd.pbc_c.all():
-            actual_charge = self.gd.integrate(rho)
-            if abs(actual_charge) > maxcharge:
-                raise NotImplementedError(
-                    'charged periodic systems are not implemented')
-        self.restrict_op_weights()
-        ret = FDPoissonSolver.solve(self, phi, rho, charge, maxcharge,
-                                    zero_initial_phi)
-        return ret
-
-    def restrict_op_weights(self):
-        """Restric operator weights to coarse grids."""
-        self._init()
-        weights = [self.dielectric.eps_gradeps] + self.op_coarse_weights
-        for i, res in enumerate(self.restrictors):
-            for j in range(4):
-                res.apply(weights[i][j], weights[i + 1][j])
-        self.step = 0.66666666 / self.operators[0].get_diagonal_element()
-
-    def get_description(self):
-        description = SolvationPoissonSolver.get_description(self)
-        return description.replace(
-            'solver with',
-            'weighted FD solver with dielectric and')
-
-    def _init(self):
-        if self._initialized:
-            return
-        self.operators[0].set_weights(self.dielectric.eps_gradeps)
-        self.op_coarse_weights = []
-        for operator in self.operators[1:]:
-            weights = [gd.empty() for gd in (operator.gd, ) * 4]
-            self.op_coarse_weights.append(weights)
-            operator.set_weights(weights)
-        return SolvationPoissonSolver._init(self)
-
-
-class PolarizationPoissonSolver(BasePoissonSolver):
-    """Poisson solver with dielectric.
-
-    Calculates the polarization charges first using only the
-    vacuum poisson equation, then solves the vacuum equation
-    with polarization charges.
-    """
-
-    def __init__(self, nn=3, relax='J', eps: float = 2e-10,
-                 maxiter: int = 1000,
-                 remove_moment=None, use_charge_center=False,
-                 gas_phase_poisson='fast', eta: float = 0.6):
-        """
-        eta: mixing weight for the polarization charge
-        """
-        self.nn = nn
-        self.eps = eps
+        self.rtol = rtol
+        self.energytol = energytol
         self.maxiter = maxiter
-        self.phi_tilde = None
-        self.eta = eta
 
-        self.gas_phase_poisson = PoissonSolver(
-            name=gas_phase_poisson, nn=nn,
-            remove_moment=remove_moment,
-            use_charge_center=use_charge_center)
+        # For warm-starting the PCG solve with the previous solution.
+        self._warm_cache: dict[str, Any] = {}
 
-    def set_dielectric(self, dielectric):
-        """Set the dielectric.
+    def __str__(self) -> str:
+        txt = ('Conjugate gradient Poisson solver:\n'
+               f'  ecut: {self.pw.ecut * Ha}  # eV\n'
+               f'  rtol: {self.rtol}\n'
+               f'  energytol: {self.energytol}  # eV\n'
+               f'  maxiter: {self.maxiter}\n')
+        return txt
 
-        Arguments:
-        dielectric -- A Dielectric instance.
+    def solve(self,
+              vHt_g: PWArray,
+              rhot_g: PWArray,
+              warm_start: bool = True) -> float:
+        """Solve the Poisson equation, placing the result in vHt_g.
+
+        With warm_start, the conjugate gradient starts from the previous
+        solution if the dielectric is unchanged, and this solution is kept
+        for the next call.  Turn it off for a charge unrelated to the SCF
+        density (such as a dipole layer's).
         """
-        self.dielectric = dielectric
+        return self._solve(vHt_g, rhot_g, warm_start)
 
-    def get_description(self):
-        return ('PolarizationPoissonSolver based on '
-                + self.gas_phase_poisson.get_description())
+    def _solve(self,
+               vHt_g,
+               rhot_g,
+               warm_start=True) -> float:
+        rhot0_g = rhot_g.gather()
+        vHt0_g = None
+        eps_R = self.grid.from_data(self.dielectric.eps_gradeps[0])
+        self.eps0_R = eps_R.gather()  # used by self._operator
 
-    def set_grid_descriptor(self, gd):
-        self.gd = gd
-        self.gas_phase_poisson.set_grid_descriptor(gd)
+        result = None  # will hold convergence information
 
-    def solve(self, phi, rho, charge=None,
-              maxcharge=1e-6,
-              zero_initial_phi=False, timer=NullTimer()):
-        """Solve according to algorithm 1 from
-        http://dx.doi.org/10.1063/1.4939125
+        # Not implemented in parallel (yet).
+        if self.pw.comm.rank == 0:
+            vHt0_g = self.pw0.zeros()
+            # Prepare the arguments for the CG. For warm starts, the x0 guess
+            # comes from the previous SCF step only if eps hasn't changed.
+            b_G = 4 * pi * rhot0_g.data
+            b_G[0] = 0.
+            Minv_g = 0.5 / self.ekin_g  # pre-conditioner
+            x0 = None
+            cached = self._warm_cache.get('eps')
+            if warm_start and np.array_equal(self.eps0_R.data,
+                                             cached):  # type: ignore
+                x0 = self._warm_cache['x0']
+
+            # Solve it.
+            vHt0_g.data[:], result = self._pcg(b_G, Minv_g, x0)
+
+        result = broadcast(result, comm=self.pw.comm)
+        if not result['converged']:
+            resid_ratio = result['resid_ratio']
+            energy_err = result['energy_err']
+            unmet = []
+            if resid_ratio > self.rtol:
+                unmet.append(f'|r|/|b| = {resid_ratio:.3e} > rtol = '
+                             f'{self.rtol:.3e}')
+            if energy_err > self.energytol:
+                unmet.append(f'|<r|x>|/2 = {energy_err:.3e} eV > energytol = '
+                             f'{self.energytol:.3e} eV')
+            raise PoissonConvergenceError(
+                f'Conjugate gradient did not converge in '
+                f'{self.maxiter} iterations: ' + '; '.join(unmet))
+
+        # Stash the results for next round's initial guess.
+        if self.pw.comm.rank == 0 and warm_start:
+            self._warm_cache['x0'] = vHt0_g.data.copy()  # type: ignore
+            self._warm_cache['eps'] = self.eps0_R.data.copy()
+
+        vHt_g.scatter_from(vHt0_g)
+        epot = 0.5 * vHt_g.integrate(rhot_g)
+        return epot
+
+    def _operator(self, phi_G):
+        """Apply the generalized Poisson operator in reciprocal space.
+
+        Parameters
+        ----------
+        phi_G : ndarray
+            Input potential in reciprocal space
+
+        Returns
+        -------
+        ndarray
+            Result of operator application
         """
-        # get initial meaningful phi -> only do this if necessary
-        if zero_initial_phi:
-            niter = self.gas_phase_poisson.solve(
-                phi, rho, charge=None, maxcharge=maxcharge,
-                zero_initial_phi=zero_initial_phi, timer=timer)
+        pw = self.pw0
+        grid = self.grid0
+        G_vG = pw.G_plus_k_Gv.T
+
+        ophi_G = np.zeros_like(phi_G)
+        for G_G in G_vG:
+            grad_G = pw.from_data(G_G * phi_G * 1j)
+            grad_R = grad_G.ifft(grid=grid)
+            grad_R.data *= self.eps0_R.data
+            ophi_G -= grad_R.fft(pw=pw).data * G_G * 1j
+
+        return ophi_G
+
+    def _pcg(self, b_G, Minv_g, x0=None):
+        """Preconditioned conjugate gradient in reciprocal space.
+
+        Uses ``PWArray.integrate()`` as the inner product. The generalized
+        Poisson operator is self-adjoint and positive definite, consistent with
+        conjugate gradient's requirements.
+
+        Parameters
+        ----------
+        b_G : ndarray
+            Right-hand side coefficients.
+        Minv_g : ndarray
+            Diagonal elements of preconditioner, in reciprocal space.
+        x0 : ndarray, optional
+            Initial guess (warm start). ``None`` means start from zero.
+
+        Notes
+        -----
+
+        Converges when both the residual is less than self.rtol and the energy
+        is less than self.energytol. Note the energy tolerance test is
+        leading-order only.
+
+        Returns
+        -------
+        x_G, result : ndarray, dict
+            ``result['converged']`` is ``False`` if ``maxiter`` was hit
+            without meeting the combined criterion, in which case
+            ``result['resid_ratio']`` (``|r|/|b|``) and
+            ``result['energy_err']`` (``|<r|x>|/2`` in eV) are the true,
+            freshly recomputed diagnostics for the abort message.
+            ``result['niter']`` is the iteration count in either case.
+        """
+        def inner_product(a_G, c_G) -> float:
+            p = self.pw0.from_data(a_G).integrate(self.pw0.from_data(c_G)).real
+            return p
+
+        def norm(a_G):
+            return np.sqrt(inner_product(a_G, a_G))
+
+        def is_converged(r_G, x_G):
+            """Checks both residual and energy."""
+            if norm(r_G) > threshold:
+                return False
+            energy = 0.5 * inner_product(r_G, x_G) / (4 * pi)
+            return abs(energy) * Ha <= self.energytol
+
+        threshold = self.rtol * norm(b_G)
+
+        if x0 is None:
+            x_G = np.zeros_like(b_G)
+            r_G = b_G.copy()
         else:
-            niter = 0
+            x_G = np.array(x0, copy=True)
+            r_G = b_G - self._operator(x_G)
 
-        phi_old = phi.copy()
-        epsr, _, _, _ = self.dielectric.eps_gradeps
-        rho_pol = self.polarization_charge(phi)
-        while niter < self.maxiter:
-            rho_mod = rho / epsr + rho_pol
-            niter += self.gas_phase_poisson.solve(
-                phi, rho_mod, charge=None, maxcharge=maxcharge,
-                zero_initial_phi=zero_initial_phi, timer=timer)
-            residual = phi - phi_old
-            error = self.gd.comm.sum_scalar(
-                np.dot(residual.ravel(), residual.ravel())) * self.gd.dv
-            if error < self.eps:
-                return niter
-            rho_pol = ((1 - self.eta) * rho_pol +
-                       self.eta * self.polarization_charge(phi))
-            phi_old = phi.copy()
+        # The main PCG loop.
+        niter = 0
+        converged = is_converged(r_G, x_G)
+        rz_old = 1.
+        p_G = np.zeros_like(r_G)
+        while not converged and niter < self.maxiter:
+            niter += 1
+            z_G = Minv_g * r_G  # pre-conditioned residual
+            rz_new = inner_product(r_G, z_G)  # pre-conditioned residual norm
+            beta = rz_new / rz_old  # blending coefficient
+            p_G = z_G + beta * p_G  # search direction
+            rz_old = rz_new  # pre-conditioned residual norm
+            Ap_G = self._operator(p_G)
+            alpha = rz_old / inner_product(p_G, Ap_G)  # step size
+            x_G = x_G + alpha * p_G  # potential
+            r_G = r_G - alpha * Ap_G  # residual
+            if is_converged(r_G, x_G):
+                # r_G can have some drift in it; calculate fresh to be sure.
+                r_G = b_G - self._operator(x_G)  # residual
+                converged = is_converged(r_G, x_G)
 
-        raise PoissonConvergenceError(
-            'PolarizationPoisson solver did not converge in '
-            + f'{niter} iterations!')
+        x_G[0] = 0.0  # average potential is arbitrary; set to 0
 
-    def polarization_charge(self, phi):
-        epsr, dx_epsr, dy_epsr, dz_epsr = self.dielectric.eps_gradeps
-        dx_phi = self.gd.empty()
-        dy_phi = self.gd.empty()
-        dz_phi = self.gd.empty()
-        Gradient(self.gd, 0, 1.0, self.nn).apply(phi, dx_phi)
-        Gradient(self.gd, 1, 1.0, self.nn).apply(phi, dy_phi)
-        Gradient(self.gd, 2, 1.0, self.nn).apply(phi, dz_phi)
+        if converged:
+            return x_G, {'converged': True, 'niter': niter}
 
-        scalar_product = (
-            dx_epsr * dx_phi +
-            dy_epsr * dy_phi +
-            dz_epsr * dz_phi)
+        # We apparently did not converge, but have only checked the CG-updated
+        # residual. Check with true residual before failing.
+        r_G = b_G - self._operator(x_G)
+        if is_converged(r_G, x_G):
+            return x_G, {'converged': True, 'niter': niter}
 
-        return scalar_product / (4. * np.pi) / epsr
-
-    def estimate_memory(self, mem):
-        # XXX estimate your own contribution
-        return self.gas_phase_poisson.estimate_memory(mem)
-
-    def todict(self):
-        my_dict = self.gas_phase_poisson.todict()
-        my_dict['name'] = f"polarization-{my_dict['name']}"
-        return my_dict
-
-
-class ADM12PoissonSolver(SolvationPoissonSolver):
-    """Poisson solver with dielectric.
-
-    Following O. Andreussi, I. Dabo, and N. Marzari,
-    J. Chem. Phys. 136, 064102 (2012).
-
-    Warning: Not intended for production use, as it is not tested
-             thouroughly!
-
-    XXX TODO : * Correction for charged systems???
-               * Check: Can the polarization charge introduce a monopole?
-               * Convergence problems depending on eta. Apparently this
-                 method works best with FFT as in the original Paper.
-               * Optimize numerics.
-    """
-
-    def __init__(self, nn=3, relax='J', eps=2e-10, maxiter=1000,
-                 remove_moment=None, eta=.6, use_charge_center=False):
-        """Constructor for ADM12PoissonSolver.
-
-        Additional arguments not present in SolvationPoissonSolver:
-        eta -- linear mixing parameter
-        """
-        adm12_warning = UserWarning(
-            'ADM12PoissonSolver is not tested thoroughly'
-            ' and therefore not recommended for production code!')
-        warnings.warn(adm12_warning)
-        self.eta = eta
-        SolvationPoissonSolver.__init__(
-            self, nn, relax, eps, maxiter, remove_moment,
-            use_charge_center=use_charge_center)
-
-    def set_grid_descriptor(self, gd):
-        super().set_grid_descriptor(gd)
-        self.gradx = Gradient(gd, 0, 1.0, self.nn)
-        self.grady = Gradient(gd, 1, 1.0, self.nn)
-        self.gradz = Gradient(gd, 2, 1.0, self.nn)
-
-    def get_description(self):
-        if len(self.operators) == 0:
-            return 'uninitialized ADM12PoissonSolver'
-        else:
-            description = SolvationPoissonSolver.get_description(self)
-            return description.replace(
-                'solver with',
-                'ADM12 solver with dielectric and')
-
-    def _init(self):
-        if self._initialized:
-            return
-        self.rho_iter = self.gd.zeros()
-        self.d_phi = self.gd.empty()
-        return SolvationPoissonSolver._init(self)
-
-    def solve(self, phi, rho, charge=None,
-              maxcharge=1e-6,
-              zero_initial_phi=False, timer=None):
-        self._init()
-        if self.gd.pbc_c.all():
-            actual_charge = self.gd.integrate(rho)
-            if abs(actual_charge) > maxcharge:
-                raise NotImplementedError(
-                    'charged periodic systems are not implemented')
-        return FDPoissonSolver.solve(
-            self, phi, rho, charge, maxcharge, zero_initial_phi,
-            timer=timer)
-
-    def solve_neutral(self, phi, rho, timer=None):
-        self._init()
-        self.rho = rho
-        return super().solve_neutral(phi, rho)
-
-    def iterate2(self, step, level=0):
-        self._init()
-        if level == 0:
-            epsr, dx_epsr, dy_epsr, dz_epsr = self.dielectric.eps_gradeps
-            self.gradx.apply(self.phis[0], self.d_phi)
-            sp = dx_epsr * self.d_phi
-            self.grady.apply(self.phis[0], self.d_phi)
-            sp += dy_epsr * self.d_phi
-            self.gradz.apply(self.phis[0], self.d_phi)
-            sp += dz_epsr * self.d_phi
-            self.rho_iter = self.eta / (4. * np.pi) * sp + \
-                (1. - self.eta) * self.rho_iter
-            self.rhos[0][:] = (self.rho_iter + self.rho) / epsr
-        return super().iterate2(step, level)
+        # Give failure diagnostics.
+        bn = norm(b_G)
+        rn = norm(r_G)
+        resid_ratio = rn / bn if bn else rn
+        energy_err = abs(0.5 * inner_product(r_G, x_G) /
+                         (4 * pi)) * Ha
+        return x_G, {'converged': False, 'niter': niter,
+                     'resid_ratio': resid_ratio, 'energy_err': energy_err}
