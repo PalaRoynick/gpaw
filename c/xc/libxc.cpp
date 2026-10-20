@@ -10,7 +10,11 @@
 #endif
 #include "xc_gpaw.h"
 #include "extensions.h"
-#include <assert.h>
+#include <cassert>
+#include <cstddef>
+#include <cstdlib>
+#include <cmath>
+#include <cstring>
 
 typedef struct
 {
