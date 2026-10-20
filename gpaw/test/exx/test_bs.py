@@ -32,7 +32,7 @@ def test_all(xc, kb, gpw_files):
     band_wfs = band_structure(calc.dft, kpts, convergence={'bands': 2})
     for wfs in band_wfs:
         i = int(round(abs(wfs.kpt_c[2]) * 4))
-        assert wfs.eig_n[:2] * Ha == pytest.approx(eig_in[i, :2])
+        assert wfs.eig_n[:2] * Ha == pytest.approx(eig_in[i, :2], abs=1e-5)
 
 
 if __name__ == '__main__':

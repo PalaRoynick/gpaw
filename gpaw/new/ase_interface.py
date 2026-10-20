@@ -548,7 +548,6 @@ class ASECalculator:
         from gpaw.new.backwards_compatibility import FakeDensity
         return FakeDensity(ibzwfs=self.dft.ibzwfs,
                            density=self.dft.density,
-                           potential=self.dft.potential,
                            pot_calc=self.dft.pot_calc,
                            densities=self.dft.densities())
 

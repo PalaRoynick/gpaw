@@ -11,7 +11,7 @@ from ase.units import Bohr, Ha
 
 from gpaw.core import UGArray
 from gpaw.gpu import as_np
-from gpaw.gpu.mpi import CuPyMPI
+# from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import zips
 from gpaw.new.brillouin import IBZ
@@ -67,7 +67,7 @@ class IBZWaveFunctions(Generic[WFT]):
         self.xp = wfs.xp
         if self.xp is not np:
             if not GPU_AWARE_MPI:
-                pass#self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
+                pass  # self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
 
         self.move_wave_functions: Callable[..., None] = lambda *args: None
 

@@ -22,7 +22,7 @@ def test_scissors():
                              'band': world.size,
                              'distribute_density': False,
                              'sl_auto': True},
-                   )#txt=None)
+                   txt=None)
     h2.get_potential_energy()
     eigs1 = h2.calc.get_eigenvalues()
 

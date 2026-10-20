@@ -418,7 +418,7 @@ def _taut(ibzwfs: IBZWaveFunctions, grid: UGDesc) -> UGArray | None:
     dpsit1_vR = grid.new(comm=None, dtype=ibzwfs.dtype).empty(3)
     taut1_swR = grid.new(comm=None).zeros((ibzwfs.nspins, 6))
     assert isinstance(taut1_swR, UGArray)  # Argggghhh!
-    domain_comm = ibzwfs.domain_comm#grid.comm
+    domain_comm = ibzwfs.domain_comm  # grid.comm
 
     for wfs in ibzwfs:
         assert isinstance(wfs, PWFDWaveFunctions)

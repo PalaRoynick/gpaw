@@ -6,7 +6,8 @@ from gpaw import GPAW
 
 def test_li_pdos_pxyz(gpw_files):
     """Test pdos method with and without m."""
-    calc = GPAW(gpw_files['bcc_li_pw'], parallel=dict(distribute_density=False))
+    calc = GPAW(gpw_files['bcc_li_pw'],
+                parallel=dict(distribute_density=False))
     print(calc)
     dos = calc.dos()
     energies = dos.get_energies(npoints=100)
