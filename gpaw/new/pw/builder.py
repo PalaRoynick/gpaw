@@ -122,8 +122,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         return self._tauct_ag
 
     def create_poisson_solver(self, extensions):
-        ps = super().create_poisson_solver(extensions)
-        if ps is not None:
+        try:
+            ps = super().create_poisson_solver(extensions)
+        except NotImplementedError:
+            pass
+        else:
             return SlowPAWPoissonSolver(
                 self.interpolation_desc,
                 self.setups,
@@ -175,7 +178,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def create_hamiltonian_operator(self, blocksize=10):
         if self.ncomponents < 4:
             if self.xc.exx_fraction == 0.0:
-                return PWHamiltonian(self.wf_grid, self.dtype, self.xp)
+                return PWHamiltonian(self.wf_grid, self.dtype,
+                                     self.ecut, self.xp)
             return PWHybridHamiltonian(
                 self.grid, self.wf_desc, self.xc, self.setups,
                 self.relpos_ac, self.atomdist, self.log,

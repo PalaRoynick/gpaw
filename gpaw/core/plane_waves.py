@@ -98,7 +98,7 @@ class PWDesc(Domain['PWArray']):
         # Convert from np.float64 to float to avoid fake cupy problem ...
         # XXX Fix cpupy!!!
         self.dv = float(abs(np.linalg.det(self.cell_cv)))
-        self._indices_cache: dict[tuple[int, ...], Array1D] = {}
+        self._indices_cache: dict[tuple[int, bool], Array1D] = {}
 
     def __repr__(self) -> str:
         m = self.myshape[0]
@@ -190,9 +190,10 @@ class PWDesc(Domain['PWArray']):
                       comm=comm or serial_comm,
                       _lazy=_lazy)
 
-    def indices(self, shape: tuple[int, ...]) -> Array1D:
+    def indices(self, shape: tuple[int, ...],
+                gpu: bool = False) -> Array1D:
         """Return indices into FFT-grid."""
-        Q_G = self._indices_cache.get(shape)
+        Q_G = self._indices_cache.get((*shape, gpu))
         if Q_G is None:
             # We should do this here instead of everywhere calling this: !!!!
             # if self.dtype == float:
@@ -202,7 +203,9 @@ class PWDesc(Domain['PWArray']):
             if (np.diff(Q_G) < 0).any():
                 a, b, c = shape
                 raise ValueError(f'{a}x{b}x{c} grid too small!')
-            self._indices_cache[shape] = Q_G
+            if gpu:
+                Q_G = cp.array(Q_G)
+            self._indices_cache[(*shape, gpu)] = Q_G
         return Q_G
 
     def minimal_uniform_grid(self,
@@ -228,22 +231,44 @@ class PWDesc(Domain['PWArray']):
         """Cut out G-vectors with (G+k)^2/2<E_kin."""
         return array_Q.ravel()[self.indices(array_Q.shape)]
 
-    def paste(self, coef_G: Array1D, array_Q: Array3D) -> None:
+    def paste(self, coef_nG: ArrayND, array_nQ: ArrayND,
+              size_c: tuple[int, int, int]) -> None:
         """Paste G-vectors with (G+k)^2/2<E_kin into 3-D FFT grid and
         zero-pad."""
-        Q_G = self.indices(array_Q.shape)
+        gpu = not isinstance(coef_nG, np.ndarray)
+        Q_G = self.indices(array_nQ.shape[-3:], gpu=gpu)
         if debug:
             assert (Q_G[1:] > Q_G[:-1]).all()
             assert (Q_G >= 0).all()
-            assert (Q_G < array_Q.size).all()
-            assert coef_G.shape == Q_G.shape
-            assert coef_G.flags.c_contiguous
+            assert (Q_G < array_nQ.size).all()
+            assert coef_nG.shape[-1] == Q_G.size
+            assert coef_nG.flags.c_contiguous
             assert Q_G.flags.c_contiguous
-            assert array_Q.flags.c_contiguous
+            assert array_nQ.flags.c_contiguous
+            if coef_nG.ndim > 1:
+                assert coef_nG.shape[0] \
+                    == array_nQ.shape[0], (coef_nG.shape[0], array_nQ.shape[0])
 
-        assert isinstance(coef_G, np.ndarray)
-        assert isinstance(array_Q, np.ndarray)
-        pw_insert(coef_G, Q_G, 1.0, array_Q)
+        if not gpu:
+            assert isinstance(array_nQ, np.ndarray)
+            if coef_nG.ndim > 1:
+                for coef_G, array_Q in zip(coef_nG, array_nQ):
+                    pw_insert(coef_G, Q_G, 1.0, array_Q)
+            else:
+                pw_insert(coef_nG, Q_G, 1.0, array_nQ)
+        else:
+            # GPU
+            if coef_nG.ndim > 1:
+                array_nX = array_nQ.reshape((coef_nG.shape[0], -1))
+            else:
+                array_nX = array_nQ.ravel()
+            array_nX[:] = 0
+            pw_insert_gpu(coef_nG,
+                          Q_G,
+                          1.0,
+                          array_nX,
+                          *size_c)
+
 
     def map_indices(self, other: PWDesc) -> tuple[Array1D, list[Array1D]]:
         """Map from one (distributed) set of plane waves to smaller global set.
@@ -531,36 +556,6 @@ class PWArray(XArray[PWDesc]):
 
         return out if not isinstance(out, Empty) else None
 
-    def gather_all(self, out: np.ndarray | PWArray) -> None:
-        """Gather coefficients from self[r] on rank r.
-
-        On rank r, an array of all G-vector coefficients will be returned.
-        These will be gathered from self[r] on all the cores.
-        """
-        assert len(self.dims) == 1
-        pw = self.desc
-        comm = pw.comm
-
-        if isinstance(out, PWArray):
-            out = out.data
-
-        if comm.size == 1:
-            out[:] = self.data[0]
-            return
-
-        N = self.dims[0]
-        assert N <= comm.size
-
-        ng = pw.shape[0]
-        myng = pw.myshape[0]
-        maxmyng = pw.maxmysize
-
-        ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
-            comm, N, ng, myng, maxmyng)
-
-        comm.alltoallv(self.data, ssize_r, soffset_r,
-                       out, rsize_r, roffset_r)
-
     def scatter_from(self, data: Array1D | PWArray | None = None) -> None:
         """Scatter plane-wave coefficients from rank-0 to all ranks."""
         if isinstance(data, PWArray):
@@ -594,28 +589,6 @@ class PWArray(XArray[PWDesc]):
                     data=self.data,
                     dist=(comm, self.comm.size, self.desc.comm.size))
         fro.redist(to)
-
-    def scatter_from_all(self, a_G: np.ndarray) -> None:
-        """Scatter all coefficients from rank r to self on other cores."""
-        assert len(self.dims) == 1
-        pw = self.desc
-        comm = pw.comm
-        if comm.size == 1:
-            self.data[:] = a_G
-            return
-
-        N = self.dims[0]
-        assert N <= comm.size
-
-        ng = pw.shape[0]
-        myng = pw.myshape[0]
-        maxmyng = pw.maxmysize
-
-        rsize_r, roffset_r, ssize_r, soffset_r = a2a_stuff(
-            comm, N, ng, myng, maxmyng)
-
-        comm.alltoallv(a_G, ssize_r, soffset_r,
-                       self.data, rsize_r, roffset_r)
 
     def integrate(self, other: PWArray | None = None) -> np.ndarray:
         """Integral of self or self time cc(other)."""
@@ -756,8 +729,8 @@ class PWArray(XArray[PWDesc]):
         a_nG = self
 
         if domain_comm.size == 1:
-            if not _slow and xp is cp and pw.dtype == self.complex_dtype:
-                return abs_square_gpu(a_nG, weights, out)
+            # if not _slow and xp is cp and pw.dtype == self.complex_dtype:
+            #     return abs_square_gpu(a_nG, weights, out)
 
             a_R = out.desc.new(dtype=pw.dtype).empty(xp=xp)
             for weight, a_G in zips(weights, a_nG):
@@ -772,17 +745,17 @@ class PWArray(XArray[PWDesc]):
 
         # Undistributed work arrays:
         a1_R = out.desc.new(comm=None, dtype=pw.dtype).empty(xp=xp)
-        a1_G = pw.new(comm=None).empty(xp=xp)
+        a1_G = pw.new(comm=None).empty(1, xp=xp)
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
 
         (N,) = self.mydims
-        for n1 in range(0, N, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, N)
-            a_nG[n1:n2].gather_all(a1_G)
-            n = n1 + domain_comm.rank
-            if n >= N:
+        for n, a1_G in a_nG.iter_by_band(a1_G):
+            # TODO: Vectorize
+            if len(n) == 0:
+                # This rank has no data.
                 continue
-            weight = weights[n]
+            a1_G = a1_G[0]
+            weight = weights[n[0]]
             if weight == 0.0:
                 continue
             a1_G.ifft(out=a1_R)
@@ -1002,20 +975,6 @@ def pw_to_grid(x_h: PWArray | None, grid: UGDesc) -> UGArray:
     x_r.scatter_from(x0_h.ifft(grid=grid.new(comm=None))
                      if x0_h is not None else None)
     return x_r
-
-
-def a2a_stuff(comm, N, ng, myng, maxmyng):
-    """Create arrays for MPI alltoallv call."""
-    ssize_r = np.zeros(comm.size, int)
-    ssize_r[:N] = myng
-    soffset_r = np.arange(comm.size) * myng
-    soffset_r[N:] = 0
-    roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
-    rsize_r = np.zeros(comm.size, int)
-    if comm.rank < N:
-        rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
-        rsize_r[-1] = ng - roffset_r[-1]
-    return ssize_r, soffset_r, rsize_r, roffset_r
 
 
 class Empty:
