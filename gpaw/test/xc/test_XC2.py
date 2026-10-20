@@ -22,7 +22,7 @@ def test_xc_XC2_radial(xc_name, nspins, radial_i):
     n[-1] *= 2
     E = xc.calculate_spherical(rgd, n, v)
     i = radial_i
-    x = v[-1, i] * np.clip(rgd.dv_g[i], 1e-40, None)
+    x = v[-1, i] * (rgd.dv_g[i] if i != 0 else 1)  # Special case for origin
     n[-1, i] += 1e-6
     Ep = xc.calculate_spherical(rgd, n, v)
     n[-1, i] -= 2e-6

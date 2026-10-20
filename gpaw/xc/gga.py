@@ -256,7 +256,9 @@ class GGA(XCFunctional):
                                 dndr_sg[:, np.newaxis],
                                 np.zeros((1, 3)), n=None)[:2]
         v_sg[:] = dedn_sg
-        v_sg[..., :] /= np.clip(rgd.dv_g, 1e-40, None)  # Do not divide by zero
+        dv_g = rgd.dv_g.copy()
+        dv_g[0] = 1
+        v_sg[..., :] /= dv_g
         return rgd.integrate(e_g)
 
 
