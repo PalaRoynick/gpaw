@@ -26,7 +26,7 @@ def test_nicl2_pair_potential(gpw_files, mpi):
     context = ResponseContext(comm=mpi.comm)
     calc = mpi.GPAW(
         gpw_files[wfs],
-        parallel=dict(domain=1, distribute_density=False),
+        parallel=dict(domain=1),
         # Needs real-space interpolation=3:
         legacy_gpaw=True)
     gs = ResponseGroundStateAdapter(calc)
