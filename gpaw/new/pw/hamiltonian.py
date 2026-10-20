@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from types import SimpleNamespace
 
 import numpy as np
-
-from ase.units import Ha, Bohr
 
 from gpaw.core.arrays import XArray
 from gpaw.core.plane_waves import PWArray
@@ -14,8 +11,6 @@ from gpaw.gpu import cupy as cp
 from gpaw.new import trace, zips
 from gpaw.new.c import pw_precond
 from gpaw.new.hamiltonian import Hamiltonian
-from gpaw.utilities.gpts import get_number_of_grid_points
-from gpaw.utilities.tools import cutoff2gridspacing
 
 
 class PWHamiltonian(Hamiltonian):
