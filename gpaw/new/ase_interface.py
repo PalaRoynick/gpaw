@@ -681,7 +681,7 @@ class ASECalculator:
         density = dft.density.redist(builder.grid,
                                      builder.interpolation_desc,
                                      builder.atomdist,
-                                     dft.pot_calc.xcomm,
+                                     dft.pot_calc.domain_complementary_comm,
                                      builder.communicators['x'])
         ibzwfs = builder.create_ibz_wave_functions(basis_set, potential)
         ibzwfs.fermi_levels = dft.ibzwfs.fermi_levels

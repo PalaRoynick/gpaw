@@ -354,7 +354,7 @@ def read_dft_state(reader: ulm.Reader,
         params = Parameters(**kwargs)
         builder = params.dft_component_builder(atoms, log=log)
 
-    (kpt_comm, band_comm, xcomm, kpt_band_comm) = (
+    (kpt_comm, band_comm, domain_complementary_comm, kpt_band_comm) = (
         builder.communicators[x] for x in 'kbxD')
 
     nt_sR = builder.grid.empty(builder.ncomponents)
@@ -377,7 +377,7 @@ def read_dft_state(reader: ulm.Reader,
         atomdist=builder.wf_atomdist, dtype=dtype)
     dH_asp = wf_atom_array_layout.empty(builder.ncomponents)
 
-    if xcomm.rank == 0:
+    if domain_complementary_comm.rank == 0:
         nt_sR.scatter_from(nt_sR_array)
         if builder.xc.type == 'MGGA':
             taut_sR.scatter_from(taut_sR_array)
@@ -391,12 +391,12 @@ def read_dft_state(reader: ulm.Reader,
         convert_to_new_packing_convention(D_asp, density=True)
         convert_to_new_packing_convention(dH_asp)
 
-    xcomm.broadcast(nt_sR.data, 0)
+    domain_complementary_comm.broadcast(nt_sR.data, 0)
     kpt_band_comm.broadcast(vt_sR.data, 0)
     if builder.xc.type == 'MGGA':
-        xcomm.broadcast(taut_sR.data, 0)
+        domain_complementary_comm.broadcast(taut_sR.data, 0)
         kpt_band_comm.broadcast(dedtaut_sR.data, 0)
-    xcomm.broadcast(D_asp.data, 0)
+    domain_complementary_comm.broadcast(D_asp.data, 0)
     kpt_band_comm.broadcast(dH_asp.data, 0)
 
     # if reader.version >= 4:
@@ -408,9 +408,9 @@ def read_dft_state(reader: ulm.Reader,
         else:
             vHt_x_array = None
         vHt_x = builder.electrostatic_potential_desc.empty()
-        if xcomm.rank == 0:
+        if domain_complementary_comm.rank == 0:
             vHt_x.scatter_from(vHt_x_array)
-        xcomm.broadcast(vHt_x.data, 0)
+        domain_complementary_comm.broadcast(vHt_x.data, 0)
     else:
         vHt_x = None
 
