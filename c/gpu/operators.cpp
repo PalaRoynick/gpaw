@@ -5,6 +5,7 @@
 #include "gpu.h"
 #include <stdlib.h>
 #include <pthread.h>
+#include <mpi.h>
 
 #define OPERATOR_NSTREAMS (2)
 

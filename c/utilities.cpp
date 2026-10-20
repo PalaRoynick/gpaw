@@ -17,6 +17,8 @@
 #include <omp.h>
 #endif
 
+#include <cmath>
+#include <complex>  // std::conj
 
 
 PyObject* get_num_threads(PyObject *self, PyObject *args)

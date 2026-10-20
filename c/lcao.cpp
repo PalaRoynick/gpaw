@@ -7,6 +7,9 @@
 #include "extensions.h"
 #include "bmgs/bmgs.h"
 #include "spline.h"
+#include <cstddef>
+#include <cmath>
+#include <cassert>
 
 
 //                    +-----------n

@@ -3,6 +3,8 @@
 #include <fftw3.h>
 
 #include "gpaw_complex.h"
+#include <cassert>
+#include <cstddef>
 
 #define assert_compatible_dtype(arr, ctype) \
     assert(PyArray_ITEMSIZE(arr) == sizeof(ctype));

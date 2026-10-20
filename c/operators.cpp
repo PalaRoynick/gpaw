@@ -10,6 +10,7 @@
 #include "extensions.h"
 #include "bc.h"
 #include "mympi.h"
+#include <mpi.h>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -93,7 +94,7 @@ static PyObject * Operator_relax(OperatorObject *self,
 
 
 // The actual computation routine for simple finite difference operation
-// Separating this routine helps using the same code in 
+// Separating this routine helps using the same code in
 // C-preconditioner
 void apply_worker(OperatorObject *self, int chunksize, int start,
 		  int end, int thread_id, int nthreads,
@@ -105,7 +106,7 @@ void apply_worker(OperatorObject *self, int chunksize, int start,
   const int* size2 = bc->size2;
   int ng = bc->ndouble * size1[0] * size1[1] * size1[2];
   int ng2 = bc->ndouble * size2[0] * size2[1] * size2[2];
- 
+
   MPI_Request recvreq[2];
   MPI_Request sendreq[2];
 
@@ -135,7 +136,7 @@ void apply_worker(OperatorObject *self, int chunksize, int start,
           bmgs_fd(&self->stencil, buf + m * ng2, my_out + m * ng);
         else
           bmgs_fdz(&self->stencil, (const double_complex*) (buf + m * ng2),
-                                         (double_complex*) (my_out + m * ng));        
+                                         (double_complex*) (my_out + m * ng));
     }
   free(buf);
   free(recvbuf);
@@ -144,8 +145,8 @@ void apply_worker(OperatorObject *self, int chunksize, int start,
 }
 
 // Double buffering async worker for central difference stencils
-// based on original code by Mads R. B. Kristensen - madsbk@diku.dk 
-void apply_worker_cfd(OperatorObject *self, int chunksize, int chunkinc, 
+// based on original code by Mads R. B. Kristensen - madsbk@diku.dk
+void apply_worker_cfd(OperatorObject *self, int chunksize, int chunkinc,
       int start, int end, int thread_id, int nthreads,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph)
@@ -157,7 +158,7 @@ void apply_worker_cfd(OperatorObject *self, int chunksize, int chunkinc,
   const int* size2 = bc->size2;
   int ng = bc->ndouble * size1[0] * size1[1] * size1[2];
   int ng2 = bc->ndouble * size2[0] * size2[1] * size2[2];
-  
+
   MPI_Request recvreq[2 * GPAW_ASYNC3 * GPAW_ASYNC2];
   MPI_Request sendreq[2 * GPAW_ASYNC3 * GPAW_ASYNC2];
 
@@ -166,7 +167,7 @@ void apply_worker_cfd(OperatorObject *self, int chunksize, int chunkinc,
   double* recvbuf = GPAW_MALLOC(double, bc->maxrecv * chunksize
                                 * GPAW_ASYNC3 * GPAW_ASYNC2);
   double* buf = GPAW_MALLOC(double, ng2 * chunksize * GPAW_ASYNC2);
-  
+
   if ((end - start) < chunksize)
     chunksize = end - start;
 
@@ -181,7 +182,7 @@ void apply_worker_cfd(OperatorObject *self, int chunksize, int chunkinc,
     bc_unpack1(bc, my_in, buf + odd * ng2 * chunksize, i,
                recvreq + odd * 2 + i * 4, sendreq + odd * 2 + i * 4,
                recvbuf + odd * bc->maxrecv * chunksize + i * bc->maxrecv * chunksize * GPAW_ASYNC2,
-               sendbuf + odd * bc->maxsend * chunksize + i * bc->maxsend * chunksize * GPAW_ASYNC2, 
+               sendbuf + odd * bc->maxsend * chunksize + i * bc->maxsend * chunksize * GPAW_ASYNC2,
                ph + 2 * i, thread_id, chunk);
   odd = odd ^ 1;
   int last_chunk = chunk;
@@ -200,7 +201,7 @@ void apply_worker_cfd(OperatorObject *self, int chunksize, int chunkinc,
           bc_unpack1(bc, my_in, buf + odd * ng2 * chunksize, i,
                      recvreq + odd * 2 + i * 4, sendreq + odd * 2 + i * 4,
                      recvbuf + odd * bc->maxrecv * chunksize + i * bc->maxrecv * chunksize * GPAW_ASYNC2,
-                     sendbuf + odd * bc->maxsend * chunksize + i * bc->maxsend * chunksize * GPAW_ASYNC2, 
+                     sendbuf + odd * bc->maxsend * chunksize + i * bc->maxsend * chunksize * GPAW_ASYNC2,
                      ph + 2 * i, thread_id, last_chunk);
         }
       odd = odd ^ 1;
@@ -256,7 +257,7 @@ static PyObject * Operator_apply(OperatorObject *self,
     nin = PyArray_DIMS(input)[0];
 
   boundary_conditions* bc = self->bc;
-  
+
   const double* in = DOUBLEP(input);
   double* out = DOUBLEP(output);
   const double_complex* ph;
@@ -278,7 +279,7 @@ static PyObject * Operator_apply(OperatorObject *self,
       chunksize = (chunksize > 0) ? chunksize : 1;
       chunksize = (chunksize < nin) ? chunksize : nin;
     }
-  
+
   int chunkinc = chunksize;
   if (getenv("GPAW_CHUNK_INC") != NULL)
     chunkinc = atoi(getenv("GPAW_CHUNK_INC"));
@@ -307,7 +308,7 @@ static PyObject * Operator_apply(OperatorObject *self,
     }
   else
     {
-    
+
       apply_worker_cfd(self, chunksize, chunkinc, start, end, thread_id, nthreads,
 	      in, out, real, ph);
     }

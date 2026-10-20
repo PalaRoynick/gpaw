@@ -17,9 +17,13 @@
 #ifdef GPAW_GPU
 #include "gpu/gpu.h"
 #include "gpu/bmgs.h"
-
 PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args);
 #endif
+
+#include <mpi.h>
+#include <cstdlib>
+#include <cstddef>
+
 
 static void Transformer_dealloc(TransformerObject *self)
 {
@@ -36,7 +40,7 @@ static void Transformer_dealloc(TransformerObject *self)
 // The actual computation routine for interpolation and restriction
 // operations. The routine is used also in C-preconditioner
 void transapply_worker(TransformerObject *self, int chunksize, int start,
-		       int end, int thread_id, int nthreads, 
+		       int end, int thread_id, int nthreads,
 		       const double* in, double* out,
 		       bool real, const double_complex* ph)
 {
@@ -60,7 +64,7 @@ void transapply_worker(TransformerObject *self, int chunksize, int start,
 
   const double* my_in;
   double* my_out;
-  
+
   int out_ng = bc->ndouble * self->size_out[0] * self->size_out[1]
                * self->size_out[2];
 
@@ -122,7 +126,7 @@ static PyObject* Transformer_apply(TransformerObject *self, PyObject *args)
     nin = PyArray_DIMS(input)[0];
 
   boundary_conditions* bc = self->bc;
-  
+
   const double* in = DOUBLEP(input);
   double* out = DOUBLEP(output);
   bool real = (PyArray_DESCR(input)->type_num == NPY_DOUBLE);
@@ -133,7 +137,7 @@ static PyObject* Transformer_apply(TransformerObject *self, PyObject *args)
     {
       int opt_msg_size = atoi(getenv("GPAW_MPI_OPTIMAL_MSG_SIZE"));
       if (bc->maxsend > 0 )
-          chunksize = opt_msg_size * 1024 / (bc->maxsend / 2 * 
+          chunksize = opt_msg_size * 1024 / (bc->maxsend / 2 *
                                              (2 - (int)real) * sizeof(double));
       chunksize = (chunksize > 0) ? chunksize : 1;
       chunksize = (chunksize < nin) ? chunksize : nin;
@@ -151,9 +155,9 @@ static PyObject* Transformer_apply(TransformerObject *self, PyObject *args)
   nthreads = omp_get_num_threads();
 #endif
   SHARE_WORK(nin, nthreads, thread_id, &start, &end);
-  transapply_worker(self, chunksize, start, end, thread_id, nthreads, 
+  transapply_worker(self, chunksize, start, end, thread_id, nthreads,
 		    in, out, real, ph);
-  } // omp parallel for 
+  } // omp parallel for
   Py_RETURN_NONE;
 }
 
