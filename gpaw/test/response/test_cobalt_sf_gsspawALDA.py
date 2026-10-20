@@ -32,7 +32,8 @@ def test_response_cobalt_sf_gsspawALDA(in_tmp_dir, gpw_files, mpi):
 
     # Read ground state data
     context = ResponseContext(txt='cobalt_susceptibility.txt', comm=mpi.comm)
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff['co_pw']
     gs = ResponseGroundStateAdapter(calc)
 
