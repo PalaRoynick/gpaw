@@ -12,9 +12,11 @@ CheckOptions:
   misc-include-cleaner.UnusedIncludes: false
   # Include-What-You-Use check (IWYU). We want to catch missing stdlib include in particular
   misc-include-cleaner.MissingIncludes: true
-  # IWYU ignore list for CPython/Pybind11. These define many symbols through internal headers and are lacking IWYU pragmas,
-  # so 'IWYU pragma: export' in our code is not enough. Therefore, ignore them. https://github.com/python/cpython/issues/137744
+  # IWYU ignore list for libraries for which IWYU export pragmas are not enough.
+  # Eg. CPython and HIP both provide symbols through internal headers, instead of eg. Python.h directly
+  # and don't have their own IWYU pragmas in place. Therefore, ignore them. https://github.com/python/cpython/issues/137744.
   # We also allow transitive includes of our own symbols (convenience), hence the .*/c/.* ignore.
   # NB! The pythonX.YY/* ignore may not do the job on all platforms
   misc-include-cleaner.IgnoreHeaders:
-    '.*/c/.*;.*/pybind11/.*;.*Python\.h*;.*/python[0-9]\.[0-9]+/.*;'
+    '.*/c/.*;.*/pybind11/.*;.*Python\.h*;.*/python[0-9]\.[0-9]+/.*;
+    .*/hip/amd_detail/.*;.*/hip/nvidia_detail/.*'
