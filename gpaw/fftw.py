@@ -287,7 +287,8 @@ class CuPyFFTPlans(FFTPlans):
         if np.issubdtype(self.tmp_R.dtype, np.floating):
             if is_hip:
                 self.tmp_R[:] = irfftn_patch(
-                    self.tmp_Q, self.tmp_R.shape) * self.tmp_nR.size
+                    self.tmp_Q, self.tmp_R.shape) * (
+                        self.tmp_R.size // self.blocksize)
             else:
                 self.tmp_R[:] = cupyx.scipy.fft.irfftn(
                     self.tmp_Q, self.tmp_R.shape[-3:],

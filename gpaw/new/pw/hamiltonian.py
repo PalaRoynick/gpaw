@@ -71,7 +71,7 @@ class PWHamiltonian(Hamiltonian):
             tmp_yR *= vt_R.data
 
             plan.fft()
-            vtpsit_yG = tmp_yQ.reshape(len(y), -1)[:, Q_G]
+            vtpsit_yG = tmp_yQ.reshape((len(y), -1))[:, Q_G]
             vtpsit_yG *= len(y) / tmp_yR.size
             psit_yG.data *= e_kin_G
             psit_yG.data += vtpsit_yG
