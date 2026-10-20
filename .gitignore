@@ -39,6 +39,7 @@ Makefile
 *.gz
 N.LDA
 *.gpw
+*.ulm
 *.npy
 *.npz
 theme.css
