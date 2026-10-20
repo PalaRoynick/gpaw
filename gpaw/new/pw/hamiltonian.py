@@ -19,25 +19,13 @@ from gpaw.utilities.tools import cutoff2gridspacing
 
 
 class PWHamiltonian(Hamiltonian):
-    def __init__(self, grid, dtype, ecut, xp=np):
+    def __init__(self, grid, dtype, xp=np):
         self.blocksize = 2 if xp is np else 8
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
-        ecut = max(2 * min(ecut, 340 / Ha), 1.2 * ecut)
-        max_h = cutoff2gridspacing(ecut * Ha) / Bohr
-        cell_cv = self.grid_local.cell_cv
-        mode = SimpleNamespace(name='pw')
-        min_size_c = get_number_of_grid_points(cell_cv, max_h,
-                                               mode=mode,
-                                               realspace=False)
-        self.grid_local_min = grid.new(comm=None, dtype=dtype,
-                                       size=min_size_c)
-        self.plan = self.grid_local_min.fft_plans(xp=xp,
-                                                  blocksize=self.blocksize)
-        self.grid_pot_in = self.grid_local.new(dtype=np.double)
-        self.grid_pot_out = self.grid_local_min.new(dtype=np.double)
-        self.plan_in = self.grid_pot_in.fft_plans(xp=xp)
-        self.plan_out = self.grid_pot_out.fft_plans(xp=xp)
+
+        self.plan = self.grid_local.fft_plans(xp=xp,
+                                              blocksize=self.blocksize)
         # It's a bit too expensive to create all the local PW-descriptors
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
@@ -69,8 +57,6 @@ class PWHamiltonian(Hamiltonian):
         psit_xG = pw_local.empty(self.blocksize, xp=xp)
         e_kin_G = xp.asarray(pw_local.ekin_G)
         Q_G = pw_local.indices(tmp_Q.shape[-3:])
-        vt_r = vt_R.fft_restrict(self.plan_in, self.plan_out,
-                                 self.grid_pot_out)
 
         # Apply the potential
         for y, psit_yG in psit_nG.iter_by_band(psit_xG, out_nG):
@@ -87,7 +73,7 @@ class PWHamiltonian(Hamiltonian):
                 tmp_yQ = tmp_Q[:len(y)]
                 plan.ifft_sphere(psit_yG.data, pw_local)
 
-            tmp_yR *= vt_r.data
+            tmp_yR *= vt_R.data
 
             plan.fft()
             vtpsit_yG = tmp_yQ.reshape(len(y), -1)[:, Q_G]

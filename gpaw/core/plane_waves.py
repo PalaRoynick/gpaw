@@ -98,7 +98,7 @@ class PWDesc(Domain['PWArray']):
         # Convert from np.float64 to float to avoid fake cupy problem ...
         # XXX Fix cpupy!!!
         self.dv = float(abs(np.linalg.det(self.cell_cv)))
-        self._indices_cache: dict[tuple[int, bool], Array1D] = {}
+        self._indices_cache: dict[tuple[int, ...], Array1D] = {}
 
     def __repr__(self) -> str:
         m = self.myshape[0]
@@ -258,6 +258,7 @@ class PWDesc(Domain['PWArray']):
                 pw_insert(coef_nG, Q_G, 1.0, array_nQ)
         else:
             # GPU
+            array_nX: ArrayND
             if coef_nG.ndim > 1:
                 array_nX = array_nQ.reshape((coef_nG.shape[0], -1))
             else:
