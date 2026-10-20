@@ -467,6 +467,7 @@ class PWArray(XArray[PWDesc]):
              grid=None,
              grid_spacing=None,
              out=None,
+             blocksize=1,
              periodic=False):
         """Do inverse FFT(s) to uniform grid(s).
 
@@ -500,7 +501,7 @@ class PWArray(XArray[PWDesc]):
         assert not out.desc.zerobc_c.any()
         assert comm.size == out.desc.comm.size, (comm, out.desc.comm)
 
-        plan = plan or out.desc.fft_plans(xp=xp)
+        plan = plan or out.desc.fft_plans(blocksize=blocksize, xp=xp)
         this = self.gather()
         if this is not None:
             for coef_G, out1 in zips(this._arrays(), out.flat()):
@@ -728,41 +729,35 @@ class PWArray(XArray[PWDesc]):
         xp = self.xp
         a_nG = self
 
-        if domain_comm.size == 1:
-            # if not _slow and xp is cp and pw.dtype == self.complex_dtype:
-            #     return abs_square_gpu(a_nG, weights, out)
-
-            a_R = out.desc.new(dtype=pw.dtype).empty(xp=xp)
-            for weight, a_G in zips(weights, a_nG):
-                if weight == 0.0:
-                    continue
-                a_G.ifft(out=a_R)
-                if xp is np:
-                    add_to_density(weight, a_R.data, out.data)
-                else:
-                    out.data += float(weight) * xp.abs(a_R.data)**2
-            return
-
         # Undistributed work arrays:
-        a1_R = out.desc.new(comm=None, dtype=pw.dtype).empty(xp=xp)
-        a1_G = pw.new(comm=None).empty(1, xp=xp)
+        blocksize = 1 if self.xp is np else 8
+        desc0 = out.desc.new(comm=None, dtype=pw.dtype)
+        pw0 = pw.new(comm=None)
+        plan = desc0.fft_plans(blocksize=blocksize, xp=xp)
+        a_xR = desc0.empty(blocksize, xp=xp)
+        a_yG = pw0.empty(blocksize, xp=xp)
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
+        weights = xp.asarray(weights)
 
         (N,) = self.mydims
-        for n, a1_G in a_nG.iter_by_band(a1_G):
+        for n_x, a_xG in a_nG.iter_by_band(a_yG):
             # TODO: Vectorize
-            if len(n) == 0:
+            if len(n_x) == 0:
                 # This rank has no data.
                 continue
-            a1_G = a1_G[0]
-            weight = weights[n[0]]
-            if weight == 0.0:
+            weight_x = weights[n_x].copy()
+            if (weight_x == 0.0).all():
                 continue
-            a1_G.ifft(out=a1_R)
-            if xp is np:
-                add_to_density(weight, a1_R.data, b1_R.data)
+            if blocksize == 1:
+                assert xp is np
+                plan.ifft_sphere(a_xG.data[0], pw0, a_xR)
             else:
-                b1_R.data += float(weight) * xp.abs(a1_R.data)**2
+                plan.ifft_sphere(a_xG.data, pw0, a_xR)
+            if xp is np:
+                add_to_density(weight_x[0], a_xR.data[0], b1_R.data)
+            else:
+                add_to_density_gpu(weight_x, a_xR.data[:len(n_x)],
+                                   b1_R.data)
 
         domain_comm.sum(b1_R.data)
         b_R = out.new()
@@ -1057,39 +1052,3 @@ def find_reciprocal_vectors(ecut: float,
     G_plus_k = G_plus_k_Qv[mask]
 
     return G_plus_k, ekin, indices.T
-
-
-def abs_square_gpu(psit_nG, weight_n, nt_R):
-    from gpaw.gpu import cupyx
-    pw = psit_nG.desc
-    dtype = as_complex_dtype(psit_nG.data.dtype)
-    plan = nt_R.desc.fft_plans(xp=cp, dtype=dtype)
-    Q_G = cp.asarray(plan.indices(pw))
-    weight_n = cp.asarray(weight_n)
-    N = len(weight_n)
-    shape = tuple(nt_R.desc.size_c)
-    B = 32
-    psit_bR = None
-    for b1 in range(0, N, B):
-        b2 = min(b1 + B, N)
-        nb = b2 - b1
-        if psit_bR is None:
-            psit_bR = cp.empty((nb,) + shape, psit_nG.data.dtype)
-        elif nb < B:
-            psit_bR = psit_bR[:nb]
-        psit_bR[:] = 0.0
-        # TODO: Remember to give real space size instead of
-        # reciprocal space size when doing real wave functions
-        # (now psit_bR is shared between real and reciprocal space)
-        pw_insert_gpu(psit_nG.data[b1:b2],
-                      Q_G,
-                      1.0,
-                      psit_bR.reshape((nb, -1)), *psit_bR.shape[1:])
-        psit_bR[:] = cupyx.scipy.fft.ifftn(
-            psit_bR,
-            shape,
-            norm='forward',
-            overwrite_x=True)
-        add_to_density_gpu(weight_n[b1:b2],
-                           psit_bR,
-                           nt_R.data)
