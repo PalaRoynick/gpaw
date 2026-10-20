@@ -874,6 +874,7 @@ class PWArray(XArray[PWDesc]):
 
         (N,) = psit_nG.mydims
         for y, psit_yG in psit_nG.iter_by_band(psit_xG):
+            # TODO: Vectorize me
             if len(y) == 0:
                 # This rank got no data
                 continue
