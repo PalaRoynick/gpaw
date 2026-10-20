@@ -1,6 +1,7 @@
 #pragma once
 #include "radial_spline.hpp"
 #include "pyarray_utils.hpp"
+#include <stdexcept>
 
 namespace gpaw
 {
