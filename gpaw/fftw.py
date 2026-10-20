@@ -243,7 +243,7 @@ class NumpyFFTPlans(FFTPlans):
 def rfftn_patch(tmp_R):
     from gpaw.gpu import cupyx
     return cupyx.scipy.fft.fftn(
-        tmp_R, axis=(-3, -2, -1))[:, :, :tmp_R.shape[-1] // 2 + 1]
+        tmp_R, axes=(-3, -2, -1))[:, :, :tmp_R.shape[-1] // 2 + 1]
 
 
 def irfftn_patch(B, shape):
@@ -256,7 +256,7 @@ def irfftn_patch(B, shape):
     inv_ind2 = -xp.arange(B.shape[1])[None, :, None]
     inv_ind3 = -xp.arange(1, B.shape[2])[None, None, :]
     A[:, :, -(B.shape[2] - 1):] = B[inv_ind1, inv_ind2, inv_ind3].conj()
-    return cupyx.scipy.fft.ifftn(A, axis=(-3, -2, -1)).real
+    return cupyx.scipy.fft.ifftn(A, axes=(-3, -2, -1)).real
 
 
 class CuPyFFTPlans(FFTPlans):
