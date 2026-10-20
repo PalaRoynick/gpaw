@@ -870,7 +870,7 @@ class PWArray(XArray[PWDesc]):
         # Undistributed work arrays:
         dpsit1_R = taut_R.desc.new(comm=None, dtype=pw.dtype).empty(xp=xp)
         pw1 = pw.new(comm=None)
-        psit1_G = pw1.empty(xp=xp)
+        psit_xG = pw1.empty(1, xp=xp)
         iGpsit1_G = pw1.empty(xp=xp)
         taut1_R = taut_R.desc.new(comm=None).zeros(xp=xp)
         Gplusk1_Gv = pw1.reciprocal_vectors()
@@ -878,13 +878,14 @@ class PWArray(XArray[PWDesc]):
         Gplusk1_Gv = as_xp(Gplusk1_Gv, xp=xp)
 
         (N,) = psit_nG.mydims
-        for n1 in range(0, N, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, N)
-            psit_nG[n1:n2].gather_all(psit1_G)
-            n = n1 + domain_comm.rank
-            if n >= N:
+        for y, psit_yG in psit_nG.iter_by_band(psit_xG):
+            if len(y) == 0:
+                # This rank got no data
                 continue
-            f = occ_n[n]
+
+            f = occ_n[y][0]
+            psit1_G = psit_yG[0]
+
             if f == 0.0:
                 continue
             for v in range(3):
