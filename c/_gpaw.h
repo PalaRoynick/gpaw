@@ -21,6 +21,7 @@
 #endif
 
 #include "splines/splines_python.hpp"
+#include "new_lfc/lfc_python.hpp"
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -436,6 +437,11 @@ static PyObject* moduleinit(void)
         return NULL;
     }
 
+    if (!bind_lfc_submodule(m))
+    {
+        return NULL;
+    }
+
 #ifdef GPAW_GPU
     if (!bind_gpu_submodule(m))
     {
@@ -444,7 +450,7 @@ static PyObject* moduleinit(void)
 #endif
 
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
-    PyObject_SetAttrString(m, "version", PyLong_FromLong(13));
+    PyObject_SetAttrString(m, "version", PyLong_FromLong(14));
 
     Py_INCREF(&LFCType);
     Py_INCREF(&OperatorType);

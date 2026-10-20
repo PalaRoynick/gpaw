@@ -1,0 +1,222 @@
+from gpaw.new.basis_functions import (BasisFunctionCollectionBase,
+                                      LFCSystemDesc, BasisFunctionDesc,
+                                      PrecalculationMode)
+
+from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.typing import override
+from gpaw.gpu import cupy as cp, as_xp
+import numpy as np
+from warnings import warn
+
+
+class BasisFunctionCollection(BasisFunctionCollectionBase):
+    """Version that uses GPAW C++ extension."""
+
+    @override
+    def __init__(self,
+                 system: LFCSystemDesc,
+                 use_gpu: bool = False,
+                 mode: PrecalculationMode = PrecalculationMode.eNever,
+                 block_size: int | tuple[int, int, int] | None = 8):
+        """"""
+        if GPAW_NO_C_EXTENSION:
+            raise RuntimeError(
+                "Cannot construct BasisFunctionCollection"
+                "without GPAW C++ extension."
+                "Use BasisFunctionCollection_PurePython instead.")
+
+        if not use_gpu:
+            raise RuntimeError("Only GPU version implemented for now")
+
+        if mode != PrecalculationMode.eNever:
+            warn("BasisFunctionCollection (new LFC) does not currently support"
+                 " precalculation. Forcing PrecalculationMode.eNever")
+            mode = PrecalculationMode.eNever
+
+        from typing import TYPE_CHECKING
+        if TYPE_CHECKING:
+            from gpaw.cgpaw.lfc import SplinePool, SplinePoolGpu
+
+        self._spline_pool_cpu: SplinePool | None = None
+        self._spline_pool_gpu: SplinePoolGpu | None = None
+
+        super().__init__(system, use_gpu=use_gpu, mode=mode,
+                         block_size=block_size)
+
+    @override
+    def _init_splines(self, phi_i: list[BasisFunctionDesc]) -> None:
+        """"""
+        from gpaw.cgpaw.lfc import LFCBuilder
+
+        # Same LFCBuilder class currently builds both splines and the LFC impl
+        builder = LFCBuilder()
+        for phi in phi_i:
+            builder.add_spline(phi.cutoff, phi.f_r)
+
+        self._spline_pool_cpu = builder.build_spline_pool()
+        """Cached reference to the CPU spline pool."""
+
+        if self.uses_gpu():
+            from gpaw.cgpaw.lfc import SplinePoolGpu
+            self._spline_pool_gpu = SplinePoolGpu(self._spline_pool_cpu)
+            """Cached reference to the GPU spline pool."""
+
+    def _build_cpp_object(self):
+        """"""
+        from gpaw.cgpaw.lfc import LFCBuilder
+        assert self._spline_pool_cpu is not None
+
+        builder = LFCBuilder()
+        builder.define_grid(self.grid.start_c, self.grid.end_c,
+                            self.geometry.h_cv, self.grid.dv)
+        builder.set_block_size(self.geometry.block_size_c)
+
+        # phi_idx_map must be built in the same order as add_phi so that block
+        # data indices match the C++ phi data array
+        phi_idx_map = {}
+        num_phi = 0
+        for a in self.atom_indices:
+            for phi in self.get_phi_instances_for_atom(a):
+                builder.add_phi(phi.desc.l, phi.spline_index, phi.position,
+                                phi.first_mu, phi.cell_coords)
+                phi_idx_map[id(phi)] = num_phi
+                num_phi += 1
+
+        # The following could use a more optimal approach.
+        # We need:
+        # - start_c for each block (easy)
+        # - map block-local phi_j to global phi_i (hard)
+        # Note that depending on a global phi index is not very scalable as it
+        # practically necessitates a full rebuild of associated arrays
+        # whenever any atom moves.
+
+        # This is hacky and inefficient!
+        for block_coords, block_phi_j in self.get_block_to_phi_map().items():
+            block_phi_idx_to_global = []
+            for phi in block_phi_j:
+                block_phi_idx_to_global.append(phi_idx_map[id(phi)])
+
+            if block_phi_idx_to_global:
+                builder.add_block(self.geometry.block_start_Bc[block_coords],
+                                  block_phi_idx_to_global)
+
+        if self.uses_gpu():
+            assert self._spline_pool_gpu is not None
+            self._impl = builder.build_gpu(self._spline_pool_gpu)
+        else:
+            raise NotImplementedError("New LFC only support GPU for now")
+
+    @override
+    def set_positions(self, relpos_ac: np.ndarray, force_update: bool) -> bool:
+        """"""
+        has_migrations = super().set_positions(relpos_ac, force_update)
+        # Must rebuild the C++ side object whenever atoms move
+        self._build_cpp_object()
+        return has_migrations
+
+    @override
+    def precalculate_on_grid(self) -> None:
+        """"""
+        raise NotImplementedError("WIP")
+
+    @override
+    def add_to_density(
+        self,
+        nt_sG: np.ndarray | cp.ndarray,
+        f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]
+    ) -> None:
+        """"""
+        if self.num_atoms == 0:
+            return
+
+        num_spins = nt_sG.shape[0]
+        assert np.all(self.grid.mysize_c == nt_sG.shape[1:])
+
+        xp = np if isinstance(nt_sG, np.ndarray) else cp
+        # Flatten f_asi dict to a single array, ordered by global mu.
+        f_sM = xp.zeros((num_spins, self.Mmax))
+
+        # FIXME: Ideally the caller should be responsible that the arrays in
+        # f_asi are consistently Numpy or Cupy depending on nt_sG. But old
+        # BasisFunctions always worked with Numpy arrays => callers currently
+        # are not careful about this. For now, we convert them internally here.
+        xp_f = np if isinstance(f_asi[0], np.ndarray) else cp
+        if xp_f is not xp:
+            warn(f"add_to_density(): Arrays in f_asi are '{xp_f.__name__}' "
+                 f"type while nt_sG is '{xp.__name__}' type. GPU/CPU memory "
+                 "copy will be performed.")
+
+        for atom_idx in range(self.num_atoms):
+            atom_mu_range = self.get_mu_range_a(atom_idx)
+            f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
+                as_xp(f_asi[atom_idx], xp)
+            )
+
+        self._impl.add_to_density(nt_sG, f_sM)
+
+    @override
+    def calculate_potential_matrix(
+        self,
+        vt_G: np.ndarray | cp.ndarray,
+        out: np.ndarray | cp.ndarray | None = None
+    ) -> np.ndarray | cp.ndarray:
+        """"""
+        assert self._impl is not None
+        xp = cp if isinstance(vt_G, cp.ndarray) else np
+
+        assert np.all(vt_G.shape == self.grid.mysize_c)
+
+        num_work_rows = (self._matrix_distribution_rules.mu_end
+                         - self._matrix_distribution_rules.mu_start)
+        if (num_work_rows <= 0):
+            # nothing to do
+            if out:
+                return out
+            else:
+                return xp.empty((0))
+
+        M = self.Mmax
+        if out is not None:
+            if out.ndim != 2:
+                raise ValueError("out array must be 2D and have enough rows")
+            rows, cols = out.shape
+            if rows < num_work_rows or cols != M:
+                raise ValueError("Not enough rows or columns in out array")
+            out[:] = 0
+            res = out
+        else:
+            res = xp.zeros((num_work_rows, M))
+
+        if self.has_precalculated_phi():
+            raise NotImplementedError("BasisFunctionCollection with precalc")
+        else:
+            self._impl.calculate_potential_matrix(
+                vt_G, res,
+                self._matrix_distribution_rules.mu_start,
+                self._matrix_distribution_rules.mu_end)
+        return res
+
+    @override
+    def construct_density(self,
+                          rho_MM,
+                          nt_G: np.ndarray | cp.ndarray,
+                          q):
+        """"""
+        assert np.all(nt_G.shape == self.grid.mysize_c)
+
+        xp = np if isinstance(nt_G, np.ndarray) else cp
+        rho_MM = as_xp(rho_MM, xp)
+
+        if self.has_precalculated_phi():
+            raise NotImplementedError("construct_density with precalc")
+        else:
+            self._impl.construct_density(
+                nt_G,
+                rho_MM,
+                self._matrix_distribution_rules.mu_start,
+                self._matrix_distribution_rules.mu_end)
+
+    @override
+    def has_precalculated_phi(self) -> bool:
+        """"""
+        return False

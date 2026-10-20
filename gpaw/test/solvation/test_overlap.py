@@ -1,6 +1,7 @@
 import pytest
 from ase.build import molecule
 
+from gpaw.old.solvation import SolvationGPAW
 import gpaw.solvation as solv
 from gpaw import GPAW
 from gpaw.analyse.overlap import Overlap
@@ -23,7 +24,7 @@ def test_solvation_overlap():
     c1 = GPAW(mode='fd', h=h, txt=None, nbands=nbands)
     c1.calculate(H2)
 
-    c2 = solv.SolvationGPAW(mode='fd',
+    c2 = SolvationGPAW(mode='fd',
                             h=h,
                             txt=None,
                             nbands=nbands + 1,

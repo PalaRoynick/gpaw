@@ -3,7 +3,7 @@ from ase.build import molecule
 from ase.units import mol, kJ, kcal, Pascal, m
 from ase.parallel import parprint
 from gpaw.solvation import (
-    SolvationGPAW,             # the solvation calculator
+    Solvation,  # the solvation extension
     EffectivePotentialCavity,  # cavity using an effective potential
     Power12Potential,          # a specific effective potential
     LinearDielectric,  # rule to construct permittivity func from the cavity
@@ -36,14 +36,16 @@ Egasphase = atoms.get_potential_energy()
 
 # perform calculation with continuum solvent model from
 # J. Chem. Phys. 141, 174108 (2014)
-atoms.calc = SolvationGPAW(
-    mode='fd', xc='PBE', h=h, txt='water.txt',
+solvation = Solvation(
     cavity=EffectivePotentialCavity(
         effective_potential=Power12Potential(atomic_radii, u0),
         temperature=T,
         surface_calculator=GradientSurface()),
     dielectric=LinearDielectric(epsinf=epsinf),
     interactions=[SurfaceInteraction(surface_tension=gamma)])
+atoms.calc = GPAW(
+    mode='fd', xc='PBE', h=h, txt='water.txt',
+    extensions=[solvation])
 Ewater = atoms.get_potential_energy()
 
 # calculate solvation Gibbs energy in various units

@@ -11,6 +11,7 @@ GPAW calculator:
 
    soc/soc
    poisson
+   extensions/solvation/solvation
    cdft/cdft
    dscf/dscf
    dcdft/dcdft

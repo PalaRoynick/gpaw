@@ -346,6 +346,8 @@ class DFTComponentsBuilder:
             orbital_free=any(setup.orbital_free for setup in self.setups))
 
     def create_poisson_solver(self, extensions):
+        """Poisson solver supplied by an extension, or None if no
+        extension supplies one."""
         poisson_solvers = []
         for ext in extensions:
             ps = ext.create_poisson_solver(
@@ -354,13 +356,22 @@ class DFTComponentsBuilder:
                 charge=self.charge,
                 xp=self.xp)
             if ps is not None:
-                poisson_solvers.append(ps)
+                poisson_solvers.append((ext.name, ps))
         if not poisson_solvers:
-            raise NotImplementedError
-        assert len(poisson_solvers) == 1
+            return None
+        names = ', '.join(repr(name) for name, _ in poisson_solvers)
+        if len(poisson_solvers) > 1:
+            raise ValueError(
+                f'Extensions {names} each supply a Poisson solver; '
+                'only one can be used.')
         psparams = self.params.poissonsolver.params
-        assert not psparams
-        return poisson_solvers[0]
+        if psparams:
+            raise ValueError(
+                f'poissonsolver={psparams} cannot be used with the {names} '
+                'extension, which supplies its own Poisson solver. Remove '
+                'poissonsolver and set any electrostatics options (such as '
+                'a dipole correction) on the extension instead.')
+        return poisson_solvers[0][1]
 
     def create_mixer(self):
         return self.params.mixer.build(desc=self.grid,
@@ -522,11 +533,11 @@ def normalize_initial_magmoms(
     elif isinstance(magmoms, float):
         magmom_av[:, 2] = magmoms
     else:
-        magmoms = np.asarray(magmoms)
-        if magmoms.ndim == 1:
-            magmom_av[:, 2] = magmoms
+        magmoms_array = np.asarray(magmoms)
+        if magmoms_array.ndim == 1:
+            magmom_av[:, 2] = magmoms_array
         else:
-            magmom_av[:] = magmoms
+            magmom_av[:] = magmoms_array
             ncomponents = 4
 
     if (ncomponents == 2 and
@@ -591,7 +602,7 @@ def calculate_number_of_bands(nbands: int | str | None,
 
     if N > nao and is_lcao:
         raise ValueError('Too many bands for LCAO calculation: '
-                         f'{nbands}%d bands and only {nao} atomic orbitals!')
+                         f'{N} bands and only {nao} atomic orbitals!')
 
     if nvalence < 0:
         raise ValueError(
