@@ -201,7 +201,7 @@ class PZSICFDPW:
                     psit_R = wfs.pd.ifft(
                         psit_G, kpt.q, local=True, safe=False)
                     psit_R *= vt_G
-                    wfs.pd.fftplan.execute()
+                    wfs.pd.fftplans.fft()
                     vtpsit_G = wfs.pd.tmp_Q.ravel()[Q_G]
                 else:
                     vtpsit_G = wfs.pd.tmp_G
