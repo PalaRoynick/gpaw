@@ -760,7 +760,8 @@ class DFT:
                                             builder.interpolation_desc)
             self.density.normalize(self.pot_calc.charge)
             if self.density.nt_sR.xp is np:
-                self.ibzwfs.kpt_band_comm.broadcast(self.density.nt_sR.data, 0)
+                self.pot_calc.domain_complementary_comm.broadcast(
+                    self.density.nt_sR.data, 0)
             self.potential, self.energies, _ = self.pot_calc.calculate(
                 self.density)
 
