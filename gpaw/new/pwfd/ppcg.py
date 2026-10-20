@@ -149,7 +149,7 @@ class PPCG(PWFDEigensolver):
         dtype = wfs.psit_nX.desc.dtype
 
         if self.tolerances is None:
-            self.tolerances = (0, 0, self.residual_target)
+            self.tolerances = (0, 0, 2e-1)
 
         assert len(self.tolerances) == 3
         # --------------- Convergence parameters ---------------
