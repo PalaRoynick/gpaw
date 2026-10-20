@@ -136,7 +136,6 @@ class XArray(Generic[DomainType], XP):
         nm = buffer_mX.mydims[0]
         b = self.mydims[0]
         comm = self.desc.comm
-        size = comm.size
         if comm.size == 1:
             # Fast serial implementation
             for m, start in enumerate(range(0, b, comm.size * nm)):
@@ -170,7 +169,8 @@ class XArray(Generic[DomainType], XP):
             max_offset = min(nm, (b - start + comm.size - 1) // comm.size)
 
             for offset_index in range(0, max_offset):
-                tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                tmp = in_data[
+                    offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
                 comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
@@ -184,7 +184,8 @@ class XArray(Generic[DomainType], XP):
 
             out_data = out_nX.data[start:end]
             for offset_index in range(0, max_offset):
-                tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                tmp = out_data[
+                    offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
                 comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,

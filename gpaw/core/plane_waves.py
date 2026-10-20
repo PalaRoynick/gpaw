@@ -22,7 +22,7 @@ from gpaw.new.c import (add_to_density, add_to_density_gpu, pw_insert,
                         pw_insert_gpu, pw_norm_gpu, pw_norm_kinetic_gpu)
 from gpaw.old.pw.descriptor import pad
 from gpaw.typing import (Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D,
-                         Vector)
+                         ArrayND, Vector)
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 if TYPE_CHECKING:
@@ -268,7 +268,6 @@ class PWDesc(Domain['PWArray']):
                           1.0,
                           array_nX,
                           *size_c)
-
 
     def map_indices(self, other: PWDesc) -> tuple[Array1D, list[Array1D]]:
         """Map from one (distributed) set of plane waves to smaller global set.

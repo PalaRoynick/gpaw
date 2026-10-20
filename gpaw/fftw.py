@@ -15,9 +15,7 @@ from scipy.fft import fftn, ifftn, irfftn, rfftn
 
 import gpaw.cgpaw as cgpaw
 from gpaw.gpu import is_hip
-from gpaw.new import trace
-from gpaw.new.c import pw_insert_gpu
-from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
+from gpaw.typing import Array3D, DTypeLike, IntVector
 from gpaw.utilities import as_complex_dtype, as_real_dtype, get_dtype_precision
 
 ESTIMATE = 64
@@ -171,7 +169,8 @@ class FFTPlans:
         if np.issubdtype(pw.dtype, np.floating):
             t = self.tmp_Q[..., 0]
             if out_nR is not None:
-                assert (out_nR.desc.size_c[:2] == self.tmp_R.shape[-3:-1]).all()
+                assert (
+                    out_nR.desc.size_c[:2] == self.tmp_R.shape[-3:-1]).all()
             n, m = (s // 2 - 1 for s in self.tmp_R.shape[-3:-1])
             t[..., 0, -m:] = t[..., 0, m:0:-1].conj()
             t[..., n:0:-1, -m:] = t[..., -n:, m:0:-1].conj()
@@ -265,7 +264,6 @@ class CuPyFFTPlans(FFTPlans):
                  size_c: IntVector,
                  dtype: DTypeLike,
                  blocksize: int = 1):
-        from gpaw.core import PWDesc
         from gpaw.gpu import cupy as cp
         self.dtype = dtype
         super().__init__(size_c, dtype, empty=cp.empty,

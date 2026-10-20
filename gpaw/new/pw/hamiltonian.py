@@ -4,7 +4,6 @@ from collections.abc import Callable
 from types import SimpleNamespace
 
 import numpy as np
-import scipy.interpolate as interp
 
 from ase.units import Ha, Bohr
 
@@ -12,12 +11,12 @@ from gpaw.core.arrays import XArray
 from gpaw.core.plane_waves import PWArray
 from gpaw.core.uniform_grid import UGArray
 from gpaw.gpu import cupy as cp
-from gpaw.new import trace, tracectx, zips, prod
-from gpaw.new.c import pw_insert_gpu, pw_precond
+from gpaw.new import trace, zips
+from gpaw.new.c import pw_precond
 from gpaw.new.hamiltonian import Hamiltonian
-from gpaw.utilities import as_complex_dtype, as_real_dtype
 from gpaw.utilities.gpts import get_number_of_grid_points
 from gpaw.utilities.tools import cutoff2gridspacing
+
 
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, dtype, ecut, xp=np):
@@ -69,7 +68,6 @@ class PWHamiltonian(Hamiltonian):
                 self.pw_cache[key] = pw_local
         psit_xG = pw_local.empty(self.blocksize, xp=xp)
         e_kin_G = xp.asarray(pw_local.ekin_G)
-        domain_comm = psit_nG.desc.comm
         Q_G = pw_local.indices(tmp_Q.shape[-3:])
         vt_r = vt_R.fft_restrict(self.plan_in, self.plan_out,
                                  self.grid_pot_out)
@@ -96,7 +94,6 @@ class PWHamiltonian(Hamiltonian):
             vtpsit_yG *= len(y) / tmp_yR.size
             psit_yG.data *= e_kin_G
             psit_yG.data += vtpsit_yG
-
 
     def apply_mgga(self,
                    dedtaut_R: UGArray,
