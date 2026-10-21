@@ -5,6 +5,8 @@
 #include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
 #include <vector>
 #include <string>
+#include <cstddef>
+#include <stdexcept>
 
 namespace py = pybind11;
 

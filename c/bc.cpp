@@ -13,6 +13,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef PARALLEL
+  #include <mpi.h>
+#endif
 
 boundary_conditions* bc_init(const long size1[3],
            const long padding[3][2],
@@ -286,7 +289,7 @@ void bc_unpack2(const boundary_conditions* bc,
 	  }
 	else
 	  MPI_Wait(&recvreq[d], MPI_STATUS_IGNORE);
-	
+
 	for (int m = 0; m < nin; m++)
 	  if (real)
 	    bmgs_paste(rbuf + m * bc->nrecv[i][d], bc->recvsize[i][d],
@@ -299,7 +302,7 @@ void bc_unpack2(const boundary_conditions* bc,
 			bc->size2, bc->recvstart[i][d]);
 	rbuf += bc->nrecv[i][d] * nin;
       }
-  
+
   // This does not work on the ibm with gcc!  We do a blocking send instead.
   for (int d = 0; d < 2; d++)
     if (sendreq[d] != 0)

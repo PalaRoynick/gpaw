@@ -6,7 +6,11 @@
 #include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
 #include "gpaw_utils.h"
 
-#include <cassert>
+#include <string>
+#include <stdexcept>
+#include <cstdint>
+#include <complex>
+#include <cstdio>
 
 namespace py = pybind11;
 

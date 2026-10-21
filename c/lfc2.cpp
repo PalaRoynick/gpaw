@@ -6,6 +6,10 @@
 #include "spline.h"
 #include "lfc.h"
 #include "bmgs/spherical_harmonics.h"
+#include <cstddef>
+#include <cmath>
+#include <complex>  // std::conj
+#include <cassert>
 
 PyObject* second_derivative(LFCObject *lfc, PyObject *args)
 {
@@ -22,7 +26,7 @@ PyObject* second_derivative(LFCObject *lfc, PyObject *args)
                         &h_cv_obj, &n_c_obj,
                         &spline_M_obj, &beg_c_obj,
                         &pos_Wc_obj, &q))
-    return NULL; 
+    return NULL;
 
   // Copied from derivative member function
   int nd = PyArray_NDIM(a_G_obj);
@@ -62,7 +66,7 @@ PyObject* second_derivative(LFCObject *lfc, PyObject *args)
             double* c_mvv = c_Mvv + 9 * M;
             const bmgsspline* spline = (const bmgsspline*) \
               &((const SplineObject*)PyList_GetItem(spline_M_obj, M))->spline;
-              
+
             double x = xG - pos_Wc[vol->W][0];
             double y = yG - pos_Wc[vol->W][1];
             double z = zG - pos_Wc[vol->W][2];
@@ -125,7 +129,7 @@ PyObject* second_derivative(LFCObject *lfc, PyObject *args)
             double_complex* c_mvv = c_Mvv + 9 * M;
             const bmgsspline* spline = (const bmgsspline*) \
               &((const SplineObject*)PyList_GetItem(spline_M_obj, M))->spline;
-              
+
             double x = xG - pos_Wc[vol->W][0];
             double y = yG - pos_Wc[vol->W][1];
             double z = zG - pos_Wc[vol->W][2];
@@ -179,7 +183,7 @@ PyObject* add_derivative(LFCObject *lfc, PyObject *args)
 {
   // Coefficients for the lfc's
   PyArrayObject* c_xM_obj;
-  // Array 
+  // Array
   PyArrayObject* a_xG_obj;
   PyArrayObject* h_cv_obj;
   PyArrayObject* n_c_obj;
@@ -206,7 +210,7 @@ PyObject* add_derivative(LFCObject *lfc, PyObject *args)
   int nx = PyArray_MultiplyList(dims, nd - 3);
   // Number of grid points
   int nG = PyArray_MultiplyList(dims + nd - 3, 3);
-  // Number of lfc's 
+  // Number of lfc's
   int nM = PyArray_DIM(c_xM_obj, PyArray_NDIM(c_xM_obj) - 1);
 
   const double* h_cv = (const double*)PyArray_DATA(h_cv_obj);
@@ -244,7 +248,7 @@ PyObject* add_derivative(LFCObject *lfc, PyObject *args)
 
             const bmgsspline* spline = (const bmgsspline*)              \
               &((const SplineObject*)PyList_GetItem(spline_M_obj, M))->spline;
-              
+
             double x = xG - pos_Wc[W][0];
             double y = yG - pos_Wc[W][1];
             double z = zG - pos_Wc[W][2];
@@ -255,7 +259,7 @@ PyObject* add_derivative(LFCObject *lfc, PyObject *args)
             double dfdr;
 
             bmgs_get_value_and_derivative(spline, r, &f, &dfdr);
-            
+
             // First contribution: f * d(r^l * Y)/dv
             double fdrlYdx_m[nm];
             if (v == 0)

@@ -1,7 +1,8 @@
 #include "python_utils.h"
 #include "array.h"
 #include "extensions.h"
-#include <stdlib.h>
+#include <cstdlib>
+#include <cmath>
 
 void _pw_insert(int nG,
                 int nQ,

@@ -9,6 +9,7 @@
 #include "python_utils.h"
 #include "gpaw_utils.h"
 #include "extensions.h"
+#include <cstddef>
 
 /* Python wrappers for some BLAS functions. The following calls Fortran functions
 directly, without using cblas.h wrappers, so we must forward declare them and ensure

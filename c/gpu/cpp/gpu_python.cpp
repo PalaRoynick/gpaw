@@ -10,6 +10,12 @@
 
 #include "gpu/splines/spline_gpu_tests_python.hpp"
 
+#include <stdexcept>
+#include <cstdint>
+#include <cstddef>
+#include <string>
+
+
 namespace py = pybind11;
 
 namespace gpaw

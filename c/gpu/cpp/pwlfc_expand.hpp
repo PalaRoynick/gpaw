@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gpu_core.hpp"
+#include <cstdint>
 
 void calculate_residual_launch_kernel(int dtypenum,
                                       int nG,

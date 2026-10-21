@@ -5,6 +5,9 @@
 #include "python_utils.h"
 #include "xc_gpaw.h"
 #include "extensions.h"
+#include <cstddef>
+#include <cmath>
+#include <cassert>
 
 //
 //          __  2

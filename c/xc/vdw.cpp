@@ -3,6 +3,8 @@
  *  Please see the accompanying LICENSE file for further information. */
 #include "python_utils.h"
 #include "extensions.h"
+#include <cstddef>
+#include <cmath>
 
 /* Old code used a VLA 'phi' array defined as `double (*phi)[nD]` and which was passed to vdwkernel as such.
 This doesn't work in C++, so we had to change it to a flat 1D array.

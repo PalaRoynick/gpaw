@@ -7,6 +7,7 @@
 #define LFC_H
 
 #include "python_utils.h"
+#include "gpaw_complex.h"
 
 typedef struct
 {
@@ -35,7 +36,7 @@ typedef struct ALIGN(16)
 } LFVolume_gpu;
 #endif
 
-typedef struct 
+typedef struct
 {
   PyObject_HEAD
   double dv;                 // volume per grid point

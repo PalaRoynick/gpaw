@@ -4,6 +4,9 @@
 
 #include "python_utils.h"
 #include "extensions.h"
+#include <cstddef>
+#include <cstdio>
+
 
 int write_plt_file(char *fname,
 		   int nx, int ny, int nz,
@@ -17,11 +20,11 @@ PyObject* WritePLT(PyObject *self, PyObject *args)
   char* fname;       /* file name     */
   PyArrayObject* ho; /* grid spacings */
   PyArrayObject* go; /* grid to write */
-  if (!PyArg_ParseTuple(args, "sOO", &fname, &ho, &go)) 
-    return NULL; 
+  if (!PyArg_ParseTuple(args, "sOO", &fname, &ho, &go))
+    return NULL;
 
   /* must be 3D */
-  if(PyArray_NDIM(go) != 3) return NULL; 
+  if(PyArray_NDIM(go) != 3) return NULL;
 
   double* g = DOUBLEP(go);
   double* h = DOUBLEP(ho);
@@ -65,7 +68,7 @@ int write_plt_file(char *fname,
   double norm,sum,dV;
 
   Output_p = fopen(fname,"wb");
-  
+
   /* see https://www.csc.fi/gopenmol/developers/plt_format.phtml */
 
 #define au_A 0.52917725
@@ -93,7 +96,7 @@ int write_plt_file(char *fname,
   /* float xmax=(float) x0+nx*dx; */
   FWRITE(xmin , sizeof(float));
   FWRITE(xmax , sizeof(float));
-      
+
   indx=0;
   norm = 0;
   sum=0;
@@ -112,7 +115,7 @@ int write_plt_file(char *fname,
 
   printf("#<write_plt_file> %s written (sum=%g,norm=%g)\n",
 	 fname,sum*dV,norm*dV);
-  
+
   return 0;
 }
 
