@@ -214,7 +214,8 @@ def prune_symmetries(rotation_scc: Array3D,
     """Remove symmetries that are not satisfied by the atoms."""
 
     if len(relpos_ac) == 0:
-        return rotation_scc, None, None
+        ns = len(rotation_scc)
+        return rotation_scc, np.zeros((ns, 3)), np.zeros((ns, 0), dtype=int)
 
     # Build lists of atom numbers for each type of atom - one
     # list for each combination of atomic number, setup type,
