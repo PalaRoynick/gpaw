@@ -2,7 +2,9 @@
  *  Please see the accompanying LICENSE file for further information. */
 
 #include "python_utils.h"
-#include <mpi.h>
+#ifdef PARALLEL
+  #include <mpi.h>
+#endif
 
 typedef struct
 {
