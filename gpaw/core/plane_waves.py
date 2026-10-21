@@ -745,7 +745,7 @@ class PWArray(XArray[PWDesc]):
         desc0 = out.desc.new(comm=None, dtype=pw.dtype)
         pw0 = pw.new(comm=None)
         plan = desc0.fft_plans(blocksize=blocksize, xp=xp)
-        a_xR = desc0.empty(blocksize, xp=xp)
+        a_yR = desc0.empty(blocksize, xp=xp)
         a_yG = pw0.empty(blocksize, xp=xp)
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
         weights = xp.asarray(weights)
@@ -757,6 +757,7 @@ class PWArray(XArray[PWDesc]):
                 # This rank has no data.
                 continue
             weight_x = weights[n_x].copy()
+            a_xR = a_yR[:len(n_x)]
             if (weight_x == 0.0).all():
                 continue
 
@@ -764,7 +765,7 @@ class PWArray(XArray[PWDesc]):
             if xp is np:
                 add_to_density(weight_x[0], a_xR.data[0], b1_R.data)
             else:
-                add_to_density_gpu(weight_x, a_xR.data[:len(n_x)],
+                add_to_density_gpu(weight_x, a_xR.data,
                                    b1_R.data)
 
         domain_comm.sum(b1_R.data)
