@@ -22,7 +22,7 @@ def test_symmetry(gpw_files, capsys):
             str(gpw_files['bcc_li_pw']),
             '-k',
             '{density:3,gamma:1}']
-    main(args)
+    main(args, initialize_globals=False)
     out = capsys.readouterr().out
     print(out)
     assert out == result

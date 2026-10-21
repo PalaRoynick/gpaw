@@ -13,9 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from ase.parallel import MPI as ASE_MPI
-from ase.parallel import broadcast as asebroadcast
-from ase.parallel import world as aseworld
 
 import gpaw
 from gpaw.gpu import cupy, is_hip
@@ -106,6 +103,8 @@ def broadcast_exception(comm):
 
 
 def rank0_call(func, comm):
+    from ase.parallel import broadcast as asebroadcast
+
     """
         Wrap function with communicator such that
         it will be only called on rank 0.
@@ -861,7 +860,14 @@ else:
         world = _world  # type: ignore
 
 
+def ASE_PARALLEL_WORLD_HOOK():
+    return world
+
+
 def verify_ase_world():
+    from ase.parallel import MPI as ASE_MPI
+    from ase.parallel import world as aseworld
+
     # ASE does not like that GPAW uses world.size at import time.
     # .... because of GPAW's own import time communicator mish-mash.
     # Now, GPAW wants to verify world.size and cannot do so,

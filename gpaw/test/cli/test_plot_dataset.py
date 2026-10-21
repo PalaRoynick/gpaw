@@ -3,14 +3,13 @@ import contextlib
 import dataclasses
 import os
 import shlex
-import subprocess
-import sys
 from typing import ContextManager
 
 import pytest
 
 from gpaw.atom.plot_dataset import CLICommand, read_setup_file
 from gpaw.setup_data import search_for_file
+from gpaw.cli.main import main
 
 
 @dataclasses.dataclass
@@ -96,9 +95,9 @@ def test_gpaw_plot_dataset(
     args.append(setup_file)
 
     if use_cli:
-        # Not much we can do about the subcommand, just see if it works
-        gpaw_plot_cmd = [sys.executable, '-m', 'gpaw', '-T', 'plot-dataset']
-        subprocess.check_call(gpaw_plot_cmd + args)
+        # We do not actually call it through cli anymore.
+        gpaw_plot_cmd = ['-T', 'plot-dataset']
+        main(gpaw_plot_cmd + args, initialize_globals=False)
     else:
         parser = argparse.ArgumentParser()
         CLICommand.add_arguments(parser)
@@ -126,8 +125,7 @@ def test_gpaw_dataset_plot(write, basis, in_tmp_dir):
     """
     old_files = set(os.listdir(os.curdir))
     outfile = 'output.png'
-    argv = [sys.executable, '-m', 'gpaw', '-T', 'dataset',
-            f'--plot={outfile}', 'Ti']
+    argv = ['-T', 'dataset', f'--plot={outfile}', 'Ti']
     expected_files = {outfile}
     if write:
         argv.insert(-1, '-w')
@@ -135,7 +133,7 @@ def test_gpaw_dataset_plot(write, basis, in_tmp_dir):
     if basis:
         argv.insert(-1, '-b')
         expected_files.add('Ti.dzp.basis')
-    subprocess.check_call(argv)
+    main(argv, initialize_globals=False)
     new_files = set(os.listdir(os.curdir))
     assert new_files == old_files | expected_files
     assert new_files - old_files == expected_files
