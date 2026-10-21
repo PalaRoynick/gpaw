@@ -108,7 +108,6 @@ class FFTPlans:
     def __init__(self,
                  size_c: IntVector,
                  dtype: DTypeLike,
-                 flags=MEASURE,  # Unused
                  empty=empty,
                  blocksize: None | int = None):
 

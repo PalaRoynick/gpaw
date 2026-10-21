@@ -5,21 +5,23 @@ import pytest
 
 import gpaw.fftw as fftw
 
-N = 1
-blocksize = 8
+N = 16
+blocksize = 2
 # n1, n2, n3 = 32, 28, 128
 n1, n2, n3 = 8, 6, 12
 
 
 def check(Plans, flags, dtype):
     t0 = time.time()
-    plan = Plans((n1, n2, n3), flags=flags, dtype=dtype, blocksize=blocksize)
+    Plans._overwrite_flags = flags  # Hack to avoid the test overwrite
+    plan = Plans((n1, n2, n3), dtype=dtype, blocksize=blocksize)
     t1 = time.time()
     t = 0.0
     for i in range(N):
         plan.tmp_R[:] = 1.3
         t2 = time.time()
         plan.fft()
+        plan.ifft()
         t3 = time.time()
         t += t3 - t2
     return t1 - t0, t
