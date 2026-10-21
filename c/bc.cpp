@@ -12,8 +12,10 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <mpi.h>
 
+#ifdef PARALLEL
+  #include <mpi.h>
+#endif
 
 boundary_conditions* bc_init(const long size1[3],
            const long padding[3][2],

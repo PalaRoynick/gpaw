@@ -9,6 +9,7 @@
 #ifdef PARALLEL
 #include <mpi.h>
 #else
+// FIXME
 typedef int* MPI_Request; // !!!!!!!???????????
 typedef int* MPI_Comm;
 #define MPI_COMM_NULL 0
