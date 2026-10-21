@@ -228,7 +228,7 @@ class Symmetries:
         self._backwards_compatible = _backwards_compatible
         if rotations is None:
             rotations = [[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]
-        self.rotation_scc = np.array(rotations, dtype=np.int8)
+        self.rotation_scc = np.array(rotations, dtype=int)
         assert (self.rotation_scc == rotations).all()
         if translations is None:
             self.translation_sc = np.zeros((len(self.rotation_scc), 3))
