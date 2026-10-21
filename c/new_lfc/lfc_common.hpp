@@ -3,6 +3,7 @@
 #include <array>
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 
 
 /** Used to index grid coordinates along a single Cartesian grid axis, eg:
