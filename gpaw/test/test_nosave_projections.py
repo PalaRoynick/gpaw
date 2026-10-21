@@ -7,7 +7,8 @@ from gpaw import GPAW
 # Prevent grid-dependent crash:
 @pytest.fixture(scope='module')
 def parallel(_not_world):
-    return dict(band=1 if _not_world.size < 8 else 4)
+    return dict(band=1 if _not_world.size < 8 else 4,
+                distribute_density=False)
 
 
 @pytest.fixture(scope='module', params=['fd', 'lcao', 'pw'])
@@ -19,7 +20,9 @@ def noprojs_gpw(module_tmp_path, request, _not_world, parallel):
     else:
         kwargs = dict(mode={'name': 'pw', 'ecut': 200.0})
     atoms.calc = GPAW(
-        kpts=[2, 2, 2], txt=None, parallel=parallel,
+        kpts=[2, 2, 2],
+        txt=None,
+        parallel=parallel,
         convergence={'density': 1e-3, 'eigenstates': 1e-3},
         communicator=_not_world,
         **kwargs)

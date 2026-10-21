@@ -32,7 +32,8 @@ def test_response_silicon_chi_RPA(in_tmp_dir, mpi):
     calc = mpi.GPAW(mode=PW(200),
                     nbands=8,
                     kpts=(4, 4, 4),
-                    parallel={'domain': 1},
+                    parallel={'domain': 1,
+                              'distribute_density': False},
                     occupations=FermiDirac(width=0.05),
                     xc='LDA')
 

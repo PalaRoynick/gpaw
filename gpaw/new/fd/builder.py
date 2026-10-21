@@ -8,6 +8,7 @@ from gpaw.new.fd.hamiltonian import FDHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.gpw import as_double_precision
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
+from gpaw.transformers import RealSpaceGridTooSmallError
 
 
 class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
@@ -76,20 +77,26 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def create_potential_calculator(self):
         extensions = self.get_extensions()
         poisson_solver = self.create_poisson_solver(extensions)
-        return FDPotentialCalculator(
-            self.grid,
-            self.fine_grid,
-            self.setups,
-            self.xc,
-            poisson_solver,
-            relpos_ac=self.relpos_ac,
-            atomdist=self.atomdist,
-            wf_grid=self.wf_grid,
-            wf_atomdist=self.wf_atomdist,
-            kpt_band_comm=self.communicators['D'],
-            interpolation_stencil_range=self.interpolation_stencil_range,
-            extensions=extensions,
-            xp=self.xp)
+        try:
+            pot_calc =  FDPotentialCalculator(
+                self.grid,
+                self.fine_grid,
+                self.setups,
+                self.xc,
+                poisson_solver,
+                relpos_ac=self.relpos_ac,
+                atomdist=self.atomdist,
+                wf_grid=self.wf_grid,
+                wf_atomdist=self.wf_atomdist,
+                kpt_band_comm=self.communicators['D'],
+                interpolation_stencil_range=self.interpolation_stencil_range,
+                extensions=extensions,
+                xp=self.xp)
+        except RealSpaceGridTooSmallError as ex:
+            raise ValueError(
+                'Try disabling density-distribution: '
+                'parallel=dict(distribute_density=False)') from ex
+        return pot_calc
 
     def create_hamiltonian_operator(self):
         return FDHamiltonian(self.wf_desc,

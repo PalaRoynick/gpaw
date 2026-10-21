@@ -34,7 +34,8 @@ def test_response_two_aluminum_chi_RPA(in_tmp_dir, mpi):
                      convergence={'density': 1e-5,
                                   'eigenstates': 1e-7,
                                   'bands': 8},
-                     parallel={'domain': 1},
+                     parallel={'domain': 1,
+                               'distribute_density': False},
                      xc='LDA')
 
     atoms1.calc = calc1
@@ -49,7 +50,8 @@ def test_response_two_aluminum_chi_RPA(in_tmp_dir, mpi):
                      convergence={'density': 1e-5,
                                   'eigenstates': 1e-7,
                                   'bands': 16},
-                     parallel={'domain': 1},
+                     parallel={'domain': 1,
+                               'distribute_density': False},
                      xc='LDA')
 
     atoms2.calc = calc2

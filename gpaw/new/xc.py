@@ -459,8 +459,9 @@ def _taut(ibzwfs: IBZWaveFunctions, grid: UGDesc) -> UGArray | None:
         symmetries = ibzwfs.ibz.symmetries
         taut1_swR.symmetrize(symmetries.rotation_scc,
                              symmetries.translation_sc)
-    domain_complementary_comm = (ibzwfs.kpt_band_comm if grid.comm.size < ibzwfs.comm.size
-             else serial_comm)
+    domain_complementary_comm = (ibzwfs.kpt_band_comm
+                                 if grid.comm.size < ibzwfs.comm.size
+                                 else serial_comm)
     if domain_complementary_comm.rank == 0:
         taut_swR = grid.empty((ibzwfs.nspins, 6))
         taut_swR.scatter_from(taut1_swR)
