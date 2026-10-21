@@ -1,5 +1,4 @@
 #pragma once
-#include "gpu/cupy_interface/device_array.hpp"
 #include "utils.hpp"
 #include "new_lfc/lfc_common.hpp"
 #include "gpu/gpu-runtime.h"  // double3 etc
@@ -9,6 +8,12 @@
 #include <memory>
 
 class SplinePoolGpu;
+
+// Safe to forward declare and resolves an otherwise nasty dependency chain on Python.h:
+namespace gpaw
+{
+struct PyDeviceArray;
+}
 
 using LFCGpuSpline = gpaw::TRadialSplineGpu<double>;
 
