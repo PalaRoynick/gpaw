@@ -290,7 +290,7 @@ class CuPyFFTPlans(FFTPlans):
             if is_hip:
                 self.tmp_R[:] = irfftn_patch(
                     self.tmp_Q, self.tmp_R.shape) * (
-                        self.tmp_R.size // self.blocksize)
+                        self.tmp_R.size // (self.blocksize or 1))
             else:
                 self.tmp_R[:] = cupyx.scipy.fft.irfftn(
                     self.tmp_Q, self.tmp_R.shape[-3:],
