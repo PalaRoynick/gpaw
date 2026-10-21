@@ -29,6 +29,7 @@ from gpaw.new.xc import Functional
 from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
+from gpaw.gpu import as_np, cupy as cp
 from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 from gpaw.mpi import serial_comm
 
@@ -97,6 +98,7 @@ class PotentialCalculator:
         raise NotImplementedError
 
     def move(self, relpos_ac, atomdist):
+        self.xc.paw_xc_batches = None
         for ext in self.extensions:
             ext.move_atoms(relpos_ac)
 
@@ -197,15 +199,22 @@ def calculate_non_local_potential(setups,
                                   ) -> tuple[AtomArrays,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
-    D_asii = density.D_asii.to_xp(np)
-    dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
-    V_aL = V_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
+
+    D_asii = density.D_asii
+    xc_corr = xc.calculate_paw_corrections(setups, density.D_asii, V_aL)
+
+    if xc_corr is None:
+        D_asii = D_asii.to_xp(np)
+        V_aL = V_aL.to_xp(np)
+    dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
+
     for a, D_sii in D_asii.items():
         V_L = V_aL[a]
         setup = setups[a]
         dH_sii, corrections = calculate_non_local_potential1(
-            setup, xc, D_sii, V_L, soc, extensions, a)
+            setup, xc, D_sii, V_L, soc, extensions, a,
+            xc_correction=xc_corr[a] if xc_corr is not None else None)
         dH_asii[a][:] = dH_sii
         for key, e in corrections.items():
             energy_corrections[key] += e
@@ -216,8 +225,8 @@ def calculate_non_local_potential(setups,
     energies = np.array([energy_corrections[name] for name in names])
     density.D_asii.layout.atomdist.comm.sum(energies)
 
-    return (dH_asii.to_xp(density.D_asii.layout.xp),
-            dict(zips(names, energies)))
+    return (dH_asii.to_xp(density.D_asii.layout.xp) if xc_corr is None
+            else dH_asii, dict(zips(names, energies)))
 
 
 def calculate_non_local_potential1(setup: Setup,
@@ -226,44 +235,59 @@ def calculate_non_local_potential1(setup: Setup,
                                    V_L: Array1D,
                                    soc: bool,
                                    extensions,
-                                   atom_index) -> tuple[Array3D,
-                                                        dict[str, float]]:
-    ncomponents = len(D_sii)
-    ndensities = 2 if ncomponents == 2 else 1
-    D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
+                                   atom_index,
+                                   xc_correction=None
+                                   ) -> tuple[Array3D, dict[str, float]]:
+    if xc_correction is None:
+        # Legacy xc calculation
+        ncomponents = len(D_sii)
+        ndensities = 2 if ncomponents == 2 else 1
 
-    D_p = D_sp[:ndensities].sum(0)
+        D_sp = np.array([pack_density(D_ii.real) for D_ii in as_np(D_sii)])
 
-    dH_p = (setup.K_p + setup.M_p +
-            setup.MB_p + 2.0 * setup.M_pp @ D_p +
-            setup.Delta_pL @ V_L)
-    e_kinetic = setup.K_p @ D_p + setup.Kc
-    e_zero = setup.MB + setup.MB_p @ D_p
-    e_coulomb = setup.M + D_p @ (setup.M_p + setup.M_pp @ D_p)
+        D_p = D_sp[:ndensities].sum(0)
 
-    dH_sp = np.zeros_like(D_sp, dtype=float if ncomponents < 4 else complex)
+        dH_p = (setup.K_p + setup.M_p +
+                setup.MB_p + 2.0 * setup.M_pp @ D_p +
+                setup.Delta_pL @ V_L)
+        e_kinetic = setup.K_p @ D_p + setup.Kc
+        e_zero = setup.MB + setup.MB_p @ D_p
+        e_coulomb = setup.M + D_p @ (setup.M_p + setup.M_pp @ D_p)
+        e_soc = 0.0
+        dH_sp = np.zeros_like(
+            D_sp, dtype=float if ncomponents < 4 else complex)
 
-    e_soc = 0.0
-    if soc:
-        dHsoc_sii = soc_terms(setup, xc.xc, D_sp)
-        e_soc += (D_sii[1:4] * dHsoc_sii).sum().real
-        dH_sp[1:4] = pack_hermitian(dHsoc_sii)
+        if soc:
+            dHsoc_sii = soc_terms(setup, xc.xc, D_sp)
+            e_soc += (D_sii[1:4] * dHsoc_sii).sum().real
+            dH_sp[1:4] = pack_hermitian(dHsoc_sii)
 
-    dH_sp[:ndensities] = dH_p
-    e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp, a=atom_index)
-
-    dH_sii = unpack_hermitian(dH_sp)
+        e_xc = xc.calculate_paw_correction(
+            setup, D_sp, dH_sp, a=atom_index)
+        dH_sp[:ndensities] += dH_p
+        dH_sii = unpack_hermitian(dH_sp)
+    else:
+        e_xc = xc_correction['e_xc']
+        e_kinetic = xc_correction['e_kin']
+        e_zero = xc_correction['e_0']
+        e_coulomb = xc_correction['e_cou']
+        e_soc = xc_correction['e_soc']
+        dH_sp = xc_correction['gradient_sp']
+        dH_sii = xc_correction['gradient_sii']
 
     if setup.hubbard_u is not None:
-        eU, dHU_sii = setup.hubbard_u.calculate(setup, D_sii)
+        eU, dHU_sii = setup.hubbard_u.calculate(setup, as_np(D_sii))
         e_xc += eU
-        dH_sii += dHU_sii
+        if isinstance(dH_sii, np.ndarray):
+            dH_sii += dHU_sii
+        else:
+            dH_sii += cp.asarray(dHU_sii)
 
     for extension in extensions:
         e_xc += extension.update_non_local_hamiltonian(
-            D_sii, setup, atom_index, dH_sii)
+            as_np(D_sii), setup, atom_index, as_np(dH_sii))
 
-    e_kinetic -= (D_sii * dH_sii).sum().real
+    e_kinetic -= as_np((D_sii * dH_sii).sum().real)
 
     return dH_sii, {'kinetic_correction': e_kinetic,
                     'coulomb': e_coulomb,
