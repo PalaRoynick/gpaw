@@ -71,3 +71,7 @@ class HydrogenAllElectronSetup(BaseSetup):
 
     def print_info(self, text):
         text('Hydrogen all-electron potential')
+
+    def get_partial_waves(self):
+        null_spl = Spline.from_data(0, 1.0, np.zeros(2))
+        return [null_spl], [null_spl], null_spl, null_spl, null_spl, null_spl

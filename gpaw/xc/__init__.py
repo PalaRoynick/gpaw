@@ -148,6 +148,9 @@ def XC(kernel,
             from gpaw.xc.qna import QNA
             return QNA(atoms, kernel['parameters'], kernel['setup_name'],
                        alpha=kernel['alpha'], stencil=kwargs.get('stencil', 2))
+        elif name == 'Numerical':
+            from gpaw.xc.numericalxc import NumericalXCKernel
+            kernel = NumericalXCKernel()
         else:
             kernel = LibXC(name)
 
@@ -158,5 +161,8 @@ def XC(kernel,
 
     elif kernel.type == 'GGA':
         return GGA(kernel, **kwargs)
+    elif kernel.type == 'NXC':
+        from gpaw.xc.numericalxc import NumericalXC
+        return NumericalXC(kernel, **kwargs)
     else:
         return MGGA(kernel, **kwargs)
