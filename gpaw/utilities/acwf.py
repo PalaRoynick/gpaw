@@ -18,6 +18,7 @@ from gpaw.atom.check import all_names
 from gpaw.dft import Parameters
 from gpaw.mpi import normalize_communicator
 from gpaw import GPAW
+from ase.eos import EquationOfState
 
 
 def eos(atoms: Atoms,
@@ -36,7 +37,7 @@ def eos(atoms: Atoms,
     strain0, e0, d2eds2 = fit(strains, energies)
     v0 = abs(np.linalg.det(cell_cv))
     volume = v0 * (1 + strain0)**3
-
+    
     return dict(
         volume=volume,
         strains=strains.tolist(),
@@ -44,7 +45,30 @@ def eos(atoms: Atoms,
         energy=e0,
         strain=strain0,
         d2eds2=d2eds2)
-
+    
+    
+def eos_birch_murnaghan(atoms: Atoms) -> dict[str, float]:
+    scale_factors = (np.linspace(0.94, 1.06, 7))**(1.0 / 3.0)
+    volumes = []
+    energies = []
+    
+    cell0 = atoms.cell.copy()
+    try:
+        for s in scale_factors:
+            atoms.set_cell(cell0 * s, scale_atoms=True)
+            energies.append(atoms.get_potential_energy(force_consistent=True))
+            volumes.append(atoms.get_volume())
+    finally:
+        atoms.set_cell(cell0, scale_atoms=True)
+        
+    eos_fit = EquationOfState(volumes, energies, eos='birchmurnaghan')
+    eos_fit.fit()
+    e0_bm, b0_bm, b1_bm, v0_bm = eos_fit.eos_parameters
+    natoms = len(atoms)
+    return dict(v0=v0_bm / natoms,
+            b0=b0_bm,
+            b1=b1_bm)
+    
 
 def fit(strains: np.ndarray,
         energies: np.ndarray | list[float]) -> tuple[float, float, float]:
@@ -277,6 +301,91 @@ def reference_structure(symbol: str,
     atoms.set_cell(atoms.cell * x, scale_atoms=True)
     atoms.numbers[atoms.numbers == 0] = atomic_numbers[symbol]
     return atoms
+
+
+def read_bm_wien2k_data(p: Path) -> dict[str, dict[str, dict[str, float]]]:
+    """Read v0, b0, b1 values for wien2k"""
+    d = json.loads(p.read_text())['BM_fit_data']
+    D: dict[str, dict[str, dict]] = {}
+    for k, v in d.items():
+        s, name = k.split('-')
+        if s not in D:
+            D[s] = {}
+        D[s][name] = {
+        'bulk_deriv': v['bulk_deriv'],
+        'bulk_modulus_ev_ang3': v['bulk_modulus_ev_ang3'],
+        'min_volume': v['min_volume']
+        }
+    p = p.with_name(p.name.replace('oxides', 'unaries'))
+    d = json.loads(p.read_text())['BM_fit_data']
+    for k, v in d.items():
+        s, name = k.split('/')
+        s = s.split('-')[0]
+        D[s][name] = {
+        'bulk_deriv': v['bulk_deriv'],
+        'bulk_modulus_ev_ang3': v['bulk_modulus_ev_ang3'],
+        'min_volume': v['min_volume']
+        }
+    return D
+       
+
+def calc_delta(v0w, b0w, b1w, v0f, b0f, b1f):
+    
+    vref = 30.
+    bref = 100. * 10.**9. / 1.602176565e-19 / 10.**30.
+    
+    Vi = 0.94 * (v0w + v0f) / 2.
+    Vf = 1.06 * (v0w + v0f) / 2.
+    
+    a3f = 9. * v0f**3. * b0f / 16. * (b1f - 4.)
+    a2f = 9. * v0f**(7./3.) * b0f / 16. * (14. - 3. * b1f)
+    a1f = 9. * v0f**(5./3.) * b0f / 16. * (3. * b1f - 16.)
+    a0f = 9. * v0f * b0f / 16. * (6. - b1f)
+
+    a3w = 9. * v0w**3. * b0w / 16. * (b1w - 4.)
+    a2w = 9. * v0w**(7./3.) * b0w / 16. * (14. - 3. * b1w)
+    a1w = 9. * v0w**(5./3.) * b0w / 16. * (3. * b1w - 16.)
+    a0w = 9. * v0w * b0w / 16. * (6. - b1w)
+
+    x = [0, 0, 0, 0, 0, 0, 0]
+
+    x[0] = (a0f - a0w)**2
+    x[1] = 6. * (a1f - a1w) * (a0f - a0w)
+    x[2] = -3. * (2. * (a2f - a2w) * (a0f - a0w) + (a1f - a1w)**2.)
+    x[3] = -2. * (a3f - a3w) * (a0f - a0w) - 2. * (a2f - a2w) * (a1f - a1w)
+    x[4] = -3./5. * (2. * (a3f - a3w) * (a1f - a1w) + (a2f - a2w)**2.)
+    x[5] = -6./7. * (a3f - a3w) * (a2f - a2w)
+    x[6] = -1./3. * (a3f - a3w)**2.
+
+    y = [0, 0, 0, 0, 0, 0, 0]
+
+    y[0] = (a0f + a0w)**2 / 4.
+    y[1] = 3. * (a1f + a1w) * (a0f + a0w) / 2.
+    y[2] = -3. * (2. * (a2f + a2w) * (a0f + a0w) + (a1f + a1w)**2.) / 4.
+    y[3] = -(a3f + a3w) * (a0f + a0w) / 2. - (a2f + a2w) * (a1f + a1w) / 2.
+    y[4] = -3./20. * (2. * (a3f + a3w) * (a1f + a1w) + (a2f + a2w)**2.)
+    y[5] = -3./14. * (a3f + a3w) * (a2f + a2w)
+    y[6] = -1./12. * (a3f + a3w)**2.
+
+    Fi = np.zeros_like(Vi)
+    Ff = np.zeros_like(Vf)
+
+    Gi = np.zeros_like(Vi)
+    Gf = np.zeros_like(Vf)
+
+    for n in range(7):
+        Fi = Fi + x[n] * Vi**(-(2.*n-3.)/3.)
+        Ff = Ff + x[n] * Vf**(-(2.*n-3.)/3.)
+
+        Gi = Gi + y[n] * Vi**(-(2.*n-3.)/3.)
+        Gf = Gf + y[n] * Vf**(-(2.*n-3.)/3.)
+
+    Delta = 1000. * np.sqrt((Ff - Fi) / (Vf - Vi))
+    Deltarel = 100. * np.sqrt((Ff - Fi) / (Gf - Gi))
+    Delta1 = 1000. * np.sqrt((Ff - Fi) / (Vf - Vi)) \
+                        / (v0w + v0f) / (b0w + b0f) * 4. * vref * bref
+            
+    return Delta, Deltarel, Delta1
 
 
 acwf_structures = {
