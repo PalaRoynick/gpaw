@@ -138,14 +138,17 @@ class XArray(Generic[DomainType], XP):
         comm = self.desc.comm
         if comm.size == 1:
             # Fast serial implementation
+            if out_nX is not None:  # We use out as the buffer
+                out_nX.data[:] = self.data
+
             for m, start in enumerate(range(0, b, comm.size * nm)):
                 end = min(start + comm.size * nm, b)
                 mybands = np.arange(start, end)
-                buffer = buffer_mX.data[:len(mybands)]
-                buffer[:] = self.data[start:end]
+                if out_nX is not None:  # We use out as the buffer
+                    buffer_mX = out_nX[start:end]
+                else:
+                    buffer_mX.data[:len(mybands)] = self.data[start:end]
                 yield mybands, buffer_mX[:len(mybands)]
-                if out_nX is not None:
-                    out_nX.data[start:end] = buffer
             return
 
         ng = self.desc.shape[0]
