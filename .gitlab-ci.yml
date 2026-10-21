@@ -210,39 +210,6 @@ build-cuda:
      - $PIP_CACHE_DIR
 
 
-# Like build-cuda but uses the makefile compilation path.
-build-cuda-makefile:
-  image: $IMAGE_CUDA
-  extends:
-    - build-cuda
-  script:
-    - |
-      cat << EOF >> siteconfig.py
-      makefile_build = True
-      gpu = True
-      gpu_target = 'cuda'
-      gpu_compiler = 'nvcc'
-      gpu_compile_args = ['-O3',
-                          '-g']
-      libraries += ['cudart', 'cublas']
-
-      # MAGMA
-      magma = True
-      libraries += ['magma']
-
-      makefile_generate_stubs = True
-      EOF
-    - cat siteconfig.py
-    # Get mypy for stubgen, and other deps that we're missing (pip doesn't get them for us with --no-build-isolation)
-    - pip install --user mypy pybind11
-    - pip install --user --upgrade setuptools packaging
-    - pip install -v --user --log build.log --editable . --no-build-isolation
-  cache:
-    key: cache-build-cuda
-    paths:
-     - $PIP_CACHE_DIR
-
-
 # ROCm build: currently the only one we do clang linting for. Hence, does some things differently
 build-rocm:
   image: $IMAGE_ROCM
