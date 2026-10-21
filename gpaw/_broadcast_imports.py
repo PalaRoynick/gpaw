@@ -39,8 +39,8 @@ cgpaw_version = getattr(cgpaw, 'version', 0)
 if not GPAW_NO_C_EXTENSION and cgpaw_version != 15:
     improvement = ''
     if cgpaw_version < 10:
-        improvement += ('GPAW has now much reduced memory consumption due to '
-                       'optimized pwlfc_expand function in new GPAW. Enjoy. ')
+        improvement += ('GPAW now has much reduced memory consumption due to '
+                        'optimized pwlfc_expand function in new GPAW. Enjoy. ')
     if cgpaw_version < 15:
         improvement += ('GPAW now supports vectorized FFTW. Enjoy. ')
 
