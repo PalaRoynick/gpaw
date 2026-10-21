@@ -110,7 +110,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
     atm = h2o_maker(vacuum=5.0)
     pwd = '/Users/giulia/Desktop/reference/'
 
-    legacy_gpaw = False
+    legacy_gpaw = True
 
     if legacy_gpaw:
 
@@ -136,7 +136,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
         atm.calc = calc
         e = atm.get_potential_energy()
         # calc.calculate(properties=['energy'], system_changes=None)
-        f_n = excite(calc, 0, 0, spin=(0, 0))
+        f_n = excite(calc, 0, 0, spin=(0, 1))
         # f_n[0] = f_n[0]/2
         prepare_mom_calculation(calc, atm, f_n, use_fixed_occupations=True)
         calc.set(eigensolver={'name': 'etdm-lcao',
@@ -173,7 +173,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
             print(calc._dft.ibzwfs._wfs_u[0].C_nM.data[i,:10])
             print()
         # roks occupations
-        f_n = excite(calc, 0, 0, spin=(0, 0))
+        f_n = excite(calc, 0, 0, spin=(0, 1))
         # this division is necessary, how to remove it????
         # f_n[0] = f_n[0] / 2
         dft.change(eigensolver={'name': 'etdm', 'excited_state': True},

@@ -6,7 +6,7 @@ from gpaw.new.density import Density
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
-from gpaw.new.etdm.etdm import ETDM
+from gpaw.new.etdm.etdm import ETDM, KArray
 from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
 from gpaw.new.etdm.tools import sort_orbitals_according_to_occ, \
     sort_orbitals_according_to_energies
@@ -152,7 +152,8 @@ class DirOptLCAO(LCAOEigensolver):
         # vedi anche in old g_vec_u non è un array ma un dictionary,
         # quindi non ho il problema delle shape.
         # devo sistemare questo.
-        a_u_init = np.zeros((len(self.objfunc.a_vec_u), max(shape)))
+        self.ind_up = KArray(self.ind_up, comm=self.objfunc.kpt_comm)
+        a_u_init = KArray(a, comm=self.objfunc.kpt_comm)
         # a_u_init = np.array(a)
 
         # Initialize ETDM
@@ -341,15 +342,19 @@ class DirOptLCAO(LCAOEigensolver):
         # print('self.beta')
         # print(beta0)
         prec = []
+        self.hess = []
 
-        for wfs in ibzwfs:
+        for i, wfs in enumerate(ibzwfs):
             w = ((2.0 / wfs.nspins) * wfs.weight) / (3.0 - wfs.nspins)
             if not self.precond:  # only calculate approx. hessian once
-                self.hess = self.get_approx_analytical_hessian(
-                    wfs, ibzwfs.dtype, ind_up)
-            hess = self.hess
+                hess = self.get_approx_analytical_hessian(
+                    wfs, ibzwfs.dtype, ind_up.a_ux[i])
+            #hess = self.hess
+            
+            self.hess.append(hess)
 
             precond = np.zeros_like(hess)
+
             correction = w * gamma * beta0 ** (-1)
             # print('beta0')
             # print(beta0)
@@ -363,7 +368,7 @@ class DirOptLCAO(LCAOEigensolver):
 
             prec.append(precond)
 
-        return np.array(prec)
+        return KArray(prec, comm=self.objfunc.kpt_comm)
 
     def get_approx_analytical_hessian(self, wfs, dtype, ind_up):
         """
@@ -375,9 +380,9 @@ class DirOptLCAO(LCAOEigensolver):
         eps_n = wfs.myeig_n
 
         if ind_up:
-            il1 = list(ind_up[0])
+            il1 = list(ind_up)
         else:
-            il1 = list(np.tril_indices(eps_n.shape[0], -1))  # from dirmintools
+            il1 = list(np.tril_indices(eps_n.shape[0]))  # from dirmintools
 
         hess = np.zeros(len(il1[0]), dtype=dtype)
         x = 0

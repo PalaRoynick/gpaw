@@ -143,13 +143,14 @@ class ETDM:
         # strength = self.objfunc.kpt_comm.sum(strength.real) ** 0.5
         strength = (p_u @ p_u)**0.5
 
-        p_u = np.array(p_u.a_ux)
+        # p_u = np.array(p_u.a_ux)
 
-        self.searchdir_algo.search_dir.a_ux = p_u
+        self.searchdir_algo.search_dir.a_ux = p_u.a_ux
 
         # Scale step to prevent too large updates
         alpha = np.minimum(self.max_step_lenght / strength, 1.0)
-        p_u[:] = alpha * p_u  # Scale the search direction
+        # p_u[:] = alpha * p_u  # Scale the search direction
+        p_u *= alpha  # Scale the search direction
 
         # Update the parameters
         if self._update_ref:
@@ -168,14 +169,13 @@ class ETDM:
         if gradient is None:
             self.gradient = shuttle
             gradient = self.gradient
-            self.a_u = [shuttle['a_vec_u'][k].data for k, a in
-                        enumerate(shuttle['a_vec_u'])]
+            #self.a_u = [shuttle['a_vec_u'][k].data for k, a in
+            #            enumerate(shuttle['a_vec_u'])]
 
         # Update the search direction using LBFGS
-        self.searchdir_algo.update(
-            KArray(self.a_u, comm=self.objfunc.kpt_comm),
-            KArray(gradient, comm=self.objfunc.kpt_comm),
-            precond=precond, mode=self.mode)
+        self.searchdir_algo.update(self.a_u,
+                                   gradient, precond=precond,
+                                   mode=self.mode)
 
         # Move parameters along the search direction
         self.move()
@@ -286,7 +286,7 @@ class ETDM:
         energy : float
         gradient : ndarray
         """
-        self.objfunc.a_vec_u = self.a_u
+        self.objfunc.a_vec_u = self.a_u.a_ux
         self.objfunc.energy = shuttle
         self.objfunc.gradient = shuttle
         return self.objfunc.energy, self.objfunc.gradient

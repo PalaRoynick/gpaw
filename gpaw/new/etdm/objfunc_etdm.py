@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from gpaw.new.etdm.skewherm_matrix import SkewHermitian
+from gpaw.new.etdm.etdm import KArray
 from gpaw.new.etdm.tools import get_n_occ
 
 
@@ -84,6 +85,10 @@ class ObjectiveFunctionETDM(ABC):
             for kpt in range(nkpts)
             for spin in range(nspins)
         ]
+
+    @property
+    def kpt_comm(self):
+        return self.ibzwfs.kpt_comm
 
     @property
     def a_vec_u(self):
@@ -190,16 +195,16 @@ class ObjectiveFunctionETDM(ABC):
             # Compute gradient for each SkewHermitian matrix
             # h_unn - h_unn.T.conj() ensures a skew-Hermitian
             # matrix for derivative
-            gradient = np.array(
+            gradient = KArray(
                 [
                     a.calc_gradient(h_nn - h_nn.T.conj())
                     for (a, h_nn) in zip(self.a_vec_u, h_unn)
-                ]
+                ], comm=self.kpt_comm
             )
         else:
             # In this case h_nn is already modified in objfunc_lcao
-            gradient = np.array(
-                [h_nn * 2. for h_nn in h_unn]
+            gradient = KArray(
+                [h_nn * 2. for h_nn in h_unn], comm=self.kpt_comm
             )
         return energy, gradient
 

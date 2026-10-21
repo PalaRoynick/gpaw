@@ -67,7 +67,7 @@ class LBFGS:
 
         # Step 1: First iteration initialization
         if not self.p_key and precond is not None:
-            g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
+            g_cur.a_ux = apply_precond(precond.a_ux, g_cur.a_ux, const=1)
             self.search_dir = -g_cur
         else:
             self.search_dir = -g_cur
@@ -82,7 +82,7 @@ class LBFGS:
 
             # preconditioning and initial search direction
             if self.p_key and precond is not None:
-                g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
+                g_cur.a_ux = apply_precond(precond.a_ux, g_cur.a_ux, const=-1)
                 self.search_dir = g_cur
             else:
                 self.search_dir = -g_cur
@@ -157,7 +157,7 @@ class LBFGS:
                 else:
                     self.beta0 = 1.0e20
                 if precond is not None:
-                    self.search_dir.a_ux = apply_precond(precond,
+                    self.search_dir.a_ux = apply_precond(precond.a_ux,
                                                          np.array(q.a_ux))
                 else:
                     self.search_dir = q * self.beta0
@@ -254,7 +254,7 @@ class LSR1:
         # preconditioning and initial search direction
         self.search_dir = g_cur.copy()
         if precond is not None:
-            self.search_dir.a_ux = apply_precond(precond, g_cur.a_ux)
+            self.search_dir.a_ux = apply_precond(precond.a_ux, g_cur.a_ux)
 
         # Step 1: First iteration initialization
         if self.local_iter == 0:
@@ -282,7 +282,7 @@ class LSR1:
             # BY_K HAS TO BE DEFINED, IS IT A KARRAY? probably
             if precond is not None:
                 by_k = self.g_old.copy()
-                by_k.a_ux = apply_precond(precond, np.array(self.dy.a_ux))
+                by_k.a_ux = apply_precond(precond.a_ux, np.array(self.dy.a_ux))
             else:
                 by_k = self.dy.copy()
 
@@ -321,7 +321,8 @@ class LSR1:
             self.local_iter += 1
 
         # Return updated search direction
-        self.search_dir.a_ux *= -1
+        # this is giving problems, becomes none
+        self.search_dir *= -1
 
         return self.search_dir
 
@@ -353,15 +354,18 @@ class LSR1:
         return bv
 
 
-def apply_precond(prec, x, const=1.0):
+def apply_precond(prec, xx, const=1.0):
     """
     Apply preconditioner to the gradient
     """
-    y = []
-    for k in range(x.shape[0]):
-        if prec[k].dtype == complex:
-            y.append(const * (prec[k].real * x[k].real +
-                              1.0j * prec[k].imag * x[k].imag))
-        else:
-            y.append(const * prec[k] * x[k])
-    return np.array(y)
+    yy = []
+    for p, x in zip(prec, xx):
+        y = []
+        for k in range(x.shape[0]):
+            if p[k].dtype == complex:
+                y.append(const * (p[k].real * x[k].real +
+                                  1.0j * p[k].imag * x[k].imag))
+            else:
+                y.append(const * p[k] * x[k])
+        yy.append(np.array(y))
+    return yy
