@@ -37,5 +37,4 @@ def test_all(xc, kb, gpw_files):
 
 if __name__ == '__main__':
     import sys
-    test_all([int(x) for x in sys.argv[1:]])
-    # print(par(2))
+    test_all('HSE06', (1, 2), {'li2_pw_hse06': sys.argv[1]})

@@ -177,8 +177,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.xc.exx_fraction == 0.0:
                 return PWHamiltonian(self.wf_grid, self.dtype, self.xp)
             return PWHybridHamiltonian(
-                self.grid, self.wf_desc, self.xc, self.setups,
-                self.relpos_ac, self.atomdist, self.log,
+                self.wf_grid, self.wf_desc, self.xc, self.setups,
+                self.relpos_ac, self.log,
                 self.ibz.bz,
                 self.communicators['k'],
                 self.communicators['b'],

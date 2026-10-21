@@ -194,7 +194,7 @@ class DFTComponentsBuilder:
 
         self.distributed_density = (
             params.parallel.get('distribute_density', not False) and
-            xcfunc.type != 'HYB' and
+            #xcfunc.type != 'HYB' and
             xcfunc.name not in {'QNA', 'TB09'} and
             comm.size > self.communicators['d'].size)
 

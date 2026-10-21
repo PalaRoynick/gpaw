@@ -174,6 +174,10 @@ class IBZWaveFunctions(Generic[WFT]):
     def __iter__(self) -> Generator[WFT]:
         yield from self._wfs_u
 
+    @property
+    def atomdist(self):
+        return self._wfs_u[0].P_ani.layout.atomdist
+
     def zero_padded_iter(self):
         """Load-balancing for kpt_comm when doing hybrid functionals."""
         for wfs in self._wfs_u:
@@ -246,7 +250,7 @@ class IBZWaveFunctions(Generic[WFT]):
         if nt_sR.desc.comm.size != self.domain_comm.size:
             my_nt_sR = nt_sR.desc.new(
                 comm=self.domain_comm).empty(self.ncomponents, xp=self.xp)
-            atomdist = self._wfs_u[0].P_ani.layout.atomdist
+            atomdist = self.atomdist
             my_D_asii = D_asii.layout.new(
                 atomdist=atomdist, xp=self.xp).zeros(self.ncomponents)
             self.calculate_density(my_nt_sR, my_D_asii)
