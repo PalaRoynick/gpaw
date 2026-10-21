@@ -134,7 +134,7 @@ def create_symmetries_object(atoms: Atoms,
 
             rotation_scc, translation_sc, atommap_sa = prune_symmetries(
                 rotation_scc, cell_cv, relpos_ac, id_a,
-                tolerance, symmorphic, _backwards_compatible)
+                tolerance, symmorphic, guarantee_group, _backwards_compatible)
 
             sym = Symmetries(
                 cell=cell_cv,
@@ -228,7 +228,7 @@ class Symmetries:
         self._backwards_compatible = _backwards_compatible
         if rotations is None:
             rotations = [[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]
-        self.rotation_scc = np.array(rotations, dtype=int)
+        self.rotation_scc = np.array(rotations, dtype=np.int8)
         assert (self.rotation_scc == rotations).all()
         if translations is None:
             self.translation_sc = np.zeros((len(self.rotation_scc), 3))
