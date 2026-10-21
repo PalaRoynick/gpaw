@@ -59,14 +59,9 @@ class PWHamiltonian(Hamiltonian):
                 # This rank got no data
                 continue
 
-            if self.blocksize == 1:
-                tmp_yR = tmp_R
-                tmp_yQ = tmp_Q
-                plan.ifft_sphere(psit_yG.data[0], pw_local)
-            else:
-                tmp_yR = tmp_R[:len(y)]
-                tmp_yQ = tmp_Q[:len(y)]
-                plan.ifft_sphere(psit_yG.data, pw_local)
+            tmp_yR = tmp_R[:len(y)]
+            tmp_yQ = tmp_Q[:len(y)]
+            plan.ifft_sphere(psit_yG.data, pw_local)
 
             tmp_yR *= vt_R.data
 

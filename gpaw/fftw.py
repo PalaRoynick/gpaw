@@ -82,7 +82,7 @@ def create_plans(size_c: IntVector,
                  dtype: DTypeLike,
                  flags: int = MEASURE,
                  xp: ModuleType = np,
-                 blocksize: int = 1) -> FFTPlans:
+                 blocksize: int | None = None) -> FFTPlans:
     """Create plan-objects for FFT and inverse FFT."""
     key = (tuple(size_c), dtype, flags, xp, blocksize)
     # Look up weakref to plan:
@@ -109,26 +109,27 @@ class FFTPlans:
                  size_c: IntVector,
                  dtype: DTypeLike,
                  empty=empty,
-                 blocksize: int = 1):
+                 blocksize: None | int = None):
+
         self.size_c = size_c
         self.shape: tuple[int, ...]
         self.blocksize = blocksize
 
         if np.issubdtype(dtype, np.floating):
-            if blocksize > 1:
-                self.shape = (blocksize, size_c[0], size_c[1],
+            if blocksize is None:
+                self.shape = (size_c[0], size_c[1],
                               size_c[2] // 2 + 1)
             else:
-                self.shape = (size_c[0], size_c[1],
+                self.shape = (blocksize, size_c[0], size_c[1],
                               size_c[2] // 2 + 1)
             self.tmp_Q = empty(self.shape, as_complex_dtype(dtype))
             # Real data with padding. NB: Numpy marks this as non-c-contiguous
             self.tmp_R = self.tmp_Q.view(dtype)[..., :, :, :size_c[2]]
         else:
-            if blocksize > 1:
-                self.shape = (blocksize, *tuple(size_c))
-            else:
+            if blocksize is None:
                 self.shape = tuple(size_c)
+            else:
+                self.shape = (blocksize, *tuple(size_c))
             self.tmp_Q = empty(self.shape, dtype)
             self.tmp_R = self.tmp_Q
 
@@ -159,12 +160,12 @@ class FFTPlans:
             out_nR.scatter_from(None)
             return
         self.tmp_Q[:] = 0
-        if self.blocksize > 1:
-            blocksize = coef_nG.shape[0]
-            assert self.blocksize >= blocksize
-            pw.paste(coef_nG, self.tmp_Q[:blocksize], self.size_c)
-        else:
+        if self.blocksize is None:
             pw.paste(coef_nG, self.tmp_Q, self.size_c)
+        else:
+            blocksize = coef_nG.shape[0]
+            assert self.blocksize >= blocksize, f'{self.blocksize} < {blocksize}'
+            pw.paste(coef_nG, self.tmp_Q[:blocksize], self.size_c)
 
         if np.issubdtype(pw.dtype, np.floating):
             t = self.tmp_Q[..., 0]
@@ -184,7 +185,7 @@ class FFTPlans:
     def fft_sphere(self, in_nR, pw):
         self.tmp_R[:] = in_nR
         self.fft()
-        coefs = pw.cut(self.tmp_Q) * (self.blocksize / self.tmp_R.size)
+        coefs = pw.cut(self.tmp_Q) * (self.blocksize or 1) / self.tmp_R.size
         return coefs
 
 
@@ -195,7 +196,7 @@ class FFTWPlans(FFTPlans):
 
     """FFTW3 3d transforms."""
     def __init__(self, size_c, dtype, flags=MEASURE,
-                 blocksize: int = 1):
+                 blocksize: int | None = None):
         if not have_fftw():
             raise ImportError('Not compiled with FFTW.')
         super().__init__(size_c, dtype, blocksize=blocksize)

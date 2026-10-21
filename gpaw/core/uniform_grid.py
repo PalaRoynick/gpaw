@@ -273,7 +273,7 @@ class UGDesc(Domain['UGArray']):
                   flags: int = fftw.MEASURE,
                   xp=np,
                   dtype=None,
-                  blocksize: int = 1) -> fftw.FFTPlans:
+                  blocksize: int | None = None) -> fftw.FFTPlans:
         """Create FFTW-plans."""
         if dtype is None:
             dtype = self.dtype

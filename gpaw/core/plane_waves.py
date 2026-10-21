@@ -467,7 +467,7 @@ class PWArray(XArray[PWDesc]):
              grid=None,
              grid_spacing=None,
              out=None,
-             blocksize=1,
+             blocksize=None,
              periodic=False):
         """Do inverse FFT(s) to uniform grid(s).
 
@@ -748,11 +748,8 @@ class PWArray(XArray[PWDesc]):
             weight_x = weights[n_x].copy()
             if (weight_x == 0.0).all():
                 continue
-            if blocksize == 1:
-                assert xp is np
-                plan.ifft_sphere(a_xG.data[0], pw0, a_xR)
-            else:
-                plan.ifft_sphere(a_xG.data, pw0, a_xR)
+
+            plan.ifft_sphere(a_xG.data, pw0, a_xR)
             if xp is np:
                 add_to_density(weight_x[0], a_xR.data[0], b1_R.data)
             else:
