@@ -295,17 +295,20 @@ build-rocm:
     GPAW_COMPILER: "amdclang++"
     GPAW_WERROR: "false"
   script:
+    # Use a makefile build so that we get dependency files => can lint headers separately
     - |
       cat << EOF >> siteconfig.py
+      makefile_build = True
       gpu = True
       gpu_target = 'hip-amd'
-      gpu_compiler = 'hipcc'
+      gpu_compiler = 'amdclang++'
       gpu_include_dirs = []
       gpu_compile_args = [
           '-g',
           '-O3',
           '-Wall',
           '--offload-arch=gfx90a',
+          '-v'
           ]
       libraries += ['amdhip64', 'hipblas']
 
