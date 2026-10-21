@@ -6,7 +6,6 @@
 
 #include "python_utils.h"
 #include "bc.h"
-#include <mpi.h>
 
 #ifdef GPAW_ASYNC
   #define GPAW_ASYNC_D 3

@@ -19,4 +19,5 @@ CheckOptions:
   # NB! The pythonX.YY/* ignore may not do the job on all platforms
   misc-include-cleaner.IgnoreHeaders:
     '.*/c/.*;.*/pybind11/.*;.*Python\.h*;.*/python[0-9]\.[0-9]+/.*;
-    .*/hip/amd_detail/.*;.*/hip/nvidia_detail/.*'
+    .*/hip/amd_detail/.*;.*/hip/nvidia_detail/.*;
+    .*/openmpi/.*;.*/mpich/.*'

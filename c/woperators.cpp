@@ -10,7 +10,6 @@
 #include "extensions.h"
 #include "bc.h"
 #include "mympi.h"
-#include <mpi.h>
 
 #ifdef _OPENMP
 #include <omp.h>

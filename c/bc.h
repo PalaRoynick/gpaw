@@ -6,10 +6,11 @@
 #define BC_H
 
 #include "bmgs/bmgs.h"
+// FIXME currently many legacy .cpp files are dependent on this header to get mpi.h.
+// And the typedefs below should be replaced with some proper abstraction over MPI
 #ifdef PARALLEL
-#include <mpi.h>
+#include <mpi.h>  // IWYU pragma: export
 #else
-// FIXME
 typedef int* MPI_Request; // !!!!!!!???????????
 typedef int* MPI_Comm;
 #define MPI_COMM_NULL 0

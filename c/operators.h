@@ -10,7 +10,6 @@
 #ifdef GPAW_GPU
 #include "gpu/bmgs.h"
 #endif
-#include <mpi.h>
 
 typedef struct
 {

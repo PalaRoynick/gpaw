@@ -20,7 +20,6 @@
 PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args);
 #endif
 
-#include <mpi.h>
 #include <cstdlib>
 #include <cstddef>
 
