@@ -13,9 +13,7 @@ from gpaw.new.lcao.hamiltonian import LCAOHamiltonian
 from gpaw.new.lcao.hybrids import HybridXCFunctional
 from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
-from gpaw.utilities.blas import mmm
 from gpaw.utilities.timing import NullTimer
-from scipy import sparse
 
 
 class LCAODFTComponentsBuilder(DFTComponentsBuilder):
@@ -238,7 +236,7 @@ def tci_helper(basis,
                     dist=(band_comm, band_comm.size, 1)) for T_MM in T0_qMM]
 
     dO_aii = AtomArraysLayout([(setup.ni, setup.ni) for setup in setups],
-                              atomdist=atomdist).new()
+                              atomdist=atomdist).empty()
     for a, dO_ii in dO_aii.items():
         dO_ii[:] = setups[a].dO_ii
 
@@ -273,4 +271,4 @@ def block_diag_product(P_aMi: AtomArrays,
     P1_aMi.block_diag_multiply(block_aii, PB_aMi)
     PB_MI = PB_aMi.matrix
     PB_MI.complex_conjugate()
-    PB_MI.multiply(P_aMi.matrix, opa='T', opb='T', beta=1.0, out=out_MM)
+    PB_MI.multiply(P_aMi.matrix, opa='N', opb='T', beta=1.0, out=out_MM)
