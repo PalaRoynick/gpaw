@@ -726,8 +726,7 @@ class PWArray(XArray[PWDesc]):
 
     def abs_square(self,
                    weights: Array1D,
-                   out: UGArray,
-                   _slow: bool = False) -> None:
+                   out: UGArray) -> None:
         """Add weighted absolute square of self to output array.
 
         With `a_n(G)` being self and `w_n` the weights:::
