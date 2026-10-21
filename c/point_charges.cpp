@@ -1,5 +1,7 @@
 #include "python_utils.h"
 #include "extensions.h"
+#include <cstddef>
+#include <cmath>
 
 
 PyObject *pc_potential(PyObject *self, PyObject *args)

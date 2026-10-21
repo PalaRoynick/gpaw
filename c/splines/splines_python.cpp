@@ -1,9 +1,15 @@
-#include "splines_python.hpp"
-#include "radial_spline.hpp"
-#include "spline.h"  // Legacy SplineType
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+
+#include "splines_python.hpp"
+#include "radial_spline.hpp"
+#include "spline.h"  // Legacy SplineType
+#include <string>
+#include <cstddef>
+#include <stdexcept>
+#include <vector>
 
 namespace py = pybind11;
 

@@ -22,6 +22,7 @@
 
 #include "splines/splines_python.hpp"
 #include "new_lfc/lfc_python.hpp"
+#include <cstddef>
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);

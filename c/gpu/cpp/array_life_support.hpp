@@ -5,6 +5,7 @@
 #include "gpu/gpu-runtime.h"
 
 #include <vector>
+#include <cstddef>
 
 /* Implements a "life support" system for Python objects, so that they remain
 alive for as long as GPAW's homebrew GPU kernels are using them. Needed because

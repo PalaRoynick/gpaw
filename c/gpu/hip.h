@@ -2,6 +2,8 @@
 #define GPU_HIP_H
 
 #include <hip/hip_runtime.h>
+// hip_runtime.h includes hip_runtime_api.h but include the latter manually too to help linters.
+#include <hip/hip_runtime_api.h>  // IWYU pragma: export
 #include <hip/hip_complex.h>
 
 // hipBlas v3 (rocm-7) removed hipblas complex types in favor of hipComplex.
@@ -168,8 +170,8 @@ __host__ __device__ static __inline__ XXXhipDoubleComplex XXXhipConj(XXXhipDoubl
         gpuSafeCall(hipGetDeviceProperties(prop, dev))
 #define gpuDeviceSynchronize()    gpuSafeCall(hipDeviceSynchronize())
 
-#define gpuFree(p)                if ((p) != NULL) gpuSafeCall(hipFree(p))
-#define gpuFreeHost(p)            if ((p) != NULL) gpuSafeCall(hipHostFree(p))
+#define gpuFree(p)                if ((p) != nullptr) gpuSafeCall(hipFree(p))
+#define gpuFreeHost(p)            if ((p) != nullptr) gpuSafeCall(hipHostFree(p))
 #define gpuMalloc(pp, size)       gpuSafeCall(hipMalloc((void**) (pp), size))
 #define gpuHostAlloc(pp, size) \
         gpuSafeCall(hipHostMalloc((void**) (pp), size, hipHostMallocPortable))

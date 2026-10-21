@@ -32,6 +32,12 @@
   #include "gpu/gpu_interface.h"
 #endif
 
+#include <cstddef>
+#include <cstring>
+#include <cstdlib>
+#include <cassert>
+#include <cstdio>
+
 static void synchronize_if_gpu(PyObject* a)
 {
 #if defined(GPAW_GPU) && defined(GPAW_GPU_AWARE_MPI)
@@ -286,7 +292,7 @@ static PyObject * mpi_sendreceive(MPIObject *self, PyObject *args,
     int dest, src;
     int sendtag = 123;
     int recvtag = 123;
-    
+
     // Some scary code below, explanation:
     // Before Python 3.13 the PyArg macro below takes kwlist as char** instead of const char**.
     // Meanwhile if we compile this as C++, string literals must be const char* type.

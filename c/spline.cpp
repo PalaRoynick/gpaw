@@ -5,6 +5,8 @@
 #include "python_utils.h"
 #include "spline.h"
 #include "assert.h"
+#include <cstddef>
+
 
 static void spline_dealloc(SplineObject *xp)
 {

@@ -1,5 +1,7 @@
 #include "python_utils.h"
 #include "extensions.h"
+#include <cstddef>
+
 
 // Evaluate the multipole expansion
 // x_GG: output, the multipole exansion evaluated at omega

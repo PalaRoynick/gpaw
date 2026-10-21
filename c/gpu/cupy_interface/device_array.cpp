@@ -1,4 +1,8 @@
 #include "device_array.hpp"
+#include <cassert>
+#include <stdexcept>
+#include <cstddef>
+#include <cstdint>
 
 namespace gpaw
 {

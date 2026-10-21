@@ -18,6 +18,13 @@
 #include <omp.h>
 #endif
 
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <cassert>
+#include <complex>  // std::conj
+
 // FIXME: just include a BLAS header instead of doing whatever this is
 #ifdef GPAW_NO_UNDERSCORE_BLAS
 #  define zgemm_  zgemm

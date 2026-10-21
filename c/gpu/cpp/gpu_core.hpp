@@ -5,6 +5,10 @@
 
 #include <string>
 #include <cstdint>
+#include <cstddef>
+#include <cstdio>
+#include <functional>
+#include <memory>
 
 namespace gpaw
 {

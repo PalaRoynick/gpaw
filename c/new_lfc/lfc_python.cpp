@@ -8,6 +8,10 @@
 #include "gpu/new_lfc/lfc_gpu_python.hpp"
 #endif
 
+#include <vector>
+#include <array>
+#include <cstdint>
+
 namespace py = pybind11;
 
 static void bind_spline_pool(py::module m)

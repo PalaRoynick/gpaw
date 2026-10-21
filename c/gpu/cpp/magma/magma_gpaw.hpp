@@ -4,13 +4,15 @@
 // Can remove this include once it's fixed in MAGMA.
 // See https://github.com/icl-utk-edu/magma/pull/41
 #include <stdbool.h>
-#include <magma_v2.h>
+#include <magma_v2.h>  // IWYU pragma: export
 
-#include <magma_auxiliary.h>
-#include <magma_types.h>
+#include <magma_auxiliary.h>  // IWYU pragma: export
+#include <magma_types.h>  // IWYU pragma: export
 
 #include "utils.hpp"
 
+#include <stdexcept>
+#include <string>
 #include <cassert>
 #include <cstdlib>
 #include <cstdint>

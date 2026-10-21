@@ -6,6 +6,12 @@
 #include "utils.hpp"
 #include <cassert>
 #include <memory>
+#include <utility>
+#include <cstdint>
+#include <stdexcept>
+#include <array>
+#include <vector>
+
 
 std::unique_ptr<LFCGpu> LFCBuilderGpu::build(LFCBuilder&& cpu_builder, std::shared_ptr<const SplinePoolGpu> spline_pool)
 {

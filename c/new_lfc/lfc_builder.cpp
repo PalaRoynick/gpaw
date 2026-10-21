@@ -1,5 +1,14 @@
 #include "lfc_builder.hpp"
 #include "splines/radial_spline.hpp"
+#include <vector>
+#include <stdexcept>
+#include <array>
+#include <memory>
+#include <utility>
+#include <cstdint>
+#include <string>
+#include <limits>
+
 
 SplinePool::SplinePool(std::vector<SplineData> spline_datas)
 {

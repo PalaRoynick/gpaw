@@ -6,6 +6,9 @@
 #include "new_lfc/lfc_builder.hpp"
 #include "spline_pool_gpu.cuh"
 #include "lfc_gpu_python.hpp"
+#include <memory>
+#include <utility>
+
 
 namespace py = pybind11;
 

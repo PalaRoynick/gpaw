@@ -1,6 +1,9 @@
 #include "python_utils.h"
 #include "array.h"
 #include "extensions.h"
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
 
 #define VELOCITY_VERLET_ADJUST_POSITION_TOL 1e-13
 #define VELOCITY_VERLET_ADJUST_VELOCITY_TOL 1e-13
