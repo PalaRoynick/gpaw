@@ -20,6 +20,7 @@ from gpaw.xc.hybrid import HybridXC as OldHybridXC
 from gpaw.xc.libvdwxc import VDWXC
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.vdw import VDWFunctionalBase
+from gpaw.new.xc.paw_xc_batch import pack_xc_batches, unpack_xc_batches
 
 
 def create_functional(xc: OldXCFunctional | str | dict,
@@ -93,6 +94,28 @@ class Functional:
 
     def calculate_paw_correction(self, setup, d, h=None, a=None):
         return self.xc.calculate_paw_correction(setup, d, h, a=a)
+
+    def calculate_paw_corrections(self, setups, D_asii, V_aL):
+        """Calculate a local collection of PAW corrections.
+
+        The experimental result graph supports exactly LDA and PBE.  Density
+        layouts outside its current scope retain the established atom loop.
+        """
+        supported = self.name in {'LDA', 'PBE'}
+        supported = supported and D_asii.mydims[0] in {1, 2}
+        if supported:
+            if hasattr(self, 'paw_xc_batches') and \
+                    self.paw_xc_batches is not None:
+                batches = self.paw_xc_batches
+                for batch in batches:
+                    batch.set_density(D_asii, V_aL)
+            else:
+                batches = pack_xc_batches(D_asii, V_aL, setups,
+                                          functional=self)
+                self.paw_xc_batches = batches
+
+            results = [batch.evaluate() for batch in batches]
+            return unpack_xc_batches(batches, results)
 
     def get_setup_name(self) -> str:
         return self.setup_name

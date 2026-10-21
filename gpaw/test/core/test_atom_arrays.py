@@ -9,7 +9,7 @@ def test_aa_to_full():
     d = np.array([[1, 2, 4],
                   [2, 3, 5],
                   [4, 5, 6]], dtype=float)
-    a = AtomArraysLayout([(3, 3)]).empty()
+    a = AtomArraysLayout([(3, 3), (4, 4)]).empty()
     a[0][:] = d
     p = a.to_lower_triangle()
     assert (p[0] == [1, 2, 3, 4, 5, 6]).all()
@@ -40,12 +40,12 @@ def test_gather(comm):
     r = min(1, comm.size - 1)
     ranks = [r, r]
     atomdist = AtomDistribution(ranks, comm)
-    D_asii = AtomArraysLayout([(1, 1)] * 2, atomdist=atomdist).empty(1)
+    D_asii = AtomArraysLayout([(2, 2), (1, 1)], atomdist=atomdist).empty(1)
     if comm.rank == r:
         D_asii[0][:] = 1
         D_asii[1][:] = 2
     D2_asii = D_asii.gather(broadcast=True)
-    assert D2_asii.data.shape == (1, 2)
+    assert D2_asii.data.shape == (1, 5)
     for a, D_sii in D2_asii.items():
         assert D_sii[0, 0, 0] == a + 1
 
@@ -54,7 +54,7 @@ def test_gather(comm):
 @pytest.mark.parametrize('xp', [np, cp])
 def test_P_ani_dH_aii(domain_band_comms, xp):
     domain_comm, band_comm = domain_band_comms
-    ni_a = [2, 3, 4, 17]
+    ni_a = [2, 4, 3, 17]
     dH_asii = AtomArraysLayout([(n, n) for n in ni_a],
                                atomdist=domain_comm,
                                xp=xp).empty(1)

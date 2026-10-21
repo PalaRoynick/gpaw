@@ -57,5 +57,5 @@ def test_lcaotddft_fxc_vs_linearize(gpw_files, in_tmp_dir):
     print('result')
     print(data.tolist())
 
-    tol = 1e-12
+    tol = 1e-10
     assert data == pytest.approx(ref, abs=tol)

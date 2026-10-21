@@ -126,6 +126,7 @@ class LDA(XCFunctional):
         rcalc = LDARadialCalculator(self.kernel)
         e_g[:], dedn_sg = rcalc(rgd, n_sg[:, np.newaxis], [1.0])
         v_sg[:] = dedn_sg
+        v_sg[..., 0] *= rgd.dv_g[0]
         return rgd.integrate(e_g)
 
     def stress_tensor_contribution(self, n_sg, skip_sum=False):
