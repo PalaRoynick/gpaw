@@ -329,8 +329,8 @@ build-cuda-makefile:
       # Provide a manual trigger for all pipelines
     - when: manual
   script:
-    - run-clang-tidy.py -p . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
     - python tools/check_include_order.py compile_commands.json
+    - run-clang-tidy -p . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
 
 
 build-rocm:
