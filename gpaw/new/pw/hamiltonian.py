@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from gpaw.fftw import PATIENT
 from gpaw.core.arrays import XArray
 from gpaw.core.plane_waves import PWArray, PWDesc
 from gpaw.core.uniform_grid import UGArray
@@ -19,8 +20,11 @@ class PWHamiltonian(Hamiltonian):
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
 
+        # Generate a fast plan. Patient pays off due how much FFT'ing we'll
+        # be doing.
         self.plan = self.grid_local.fft_plans(xp=xp,
-                                              blocksize=self.blocksize)
+                                              blocksize=self.blocksize,
+                                              flags=PATIENT)
         # It's a bit too expensive to create all the local PW-descriptors
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
