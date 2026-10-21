@@ -41,15 +41,26 @@ stages:
 
 .build:
   stage: build
+  variables:
+    # Use Bear to optionally generate compile database for linting
+    BEAR_CONFIG: "tools/bear.yml"
+    # Compiler executable to use for non-GPU parts. Can be overriden in jobs deriving from this
+    GPAW_COMPILER: "mpic++"
+    # Whether to pass -Werror in siteconfig.py
+    GPAW_WERROR: "true"
   before_script:
     - !reference [default, before_script]
     - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - pip install coverage
     - |
+      werror_flag=""
+      if [ "$GPAW_WERROR" = "true" ]; then
+        werror_flag="'-Werror',"
+      fi
       cat << EOF > siteconfig.py
       mpi = True
-      compiler = 'mpic++'
+      compiler = '$GPAW_COMPILER'
       libraries = []
       library_dirs = []
       include_dirs = []
@@ -59,7 +70,7 @@ stages:
                             '-g',
                             '-fopenmp',
                             '-Wall',
-                            '-Werror',
+                            $werror_flag
                             ]
       extra_link_args = ['-fopenmp']
 
@@ -73,6 +84,9 @@ stages:
 
       libraries += ['xc']
       EOF
+  after_script:
+    # Guarantee the artifact path below always exists even if not building for linting
+    - touch compile_commands.json
   artifacts:
     when: always
     paths:
@@ -80,6 +94,7 @@ stages:
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
+      - compile_commands.json
     expire_in: 30 mins
 
 
@@ -228,6 +243,7 @@ build-cuda-makefile:
      - $PIP_CACHE_DIR
 
 
+# ROCm build: currently the only one we do clang linting for. Hence, does some things differently
 build-rocm:
   image: $IMAGE_ROCM
   extends:
@@ -235,30 +251,108 @@ build-rocm:
   # Run the build on mi210 runner to avoid pulling the image to other runners
   tags:
     - mi210
+  variables:
+    # Don't use an mpi wrapper, makes clang analysis harder.
+    GPAW_COMPILER: "amdclang++"
+    # Clang builds in general are not ready for -Wall -Werror! Too many warnings from old code
+    GPAW_WERROR: "false"
   script:
+    # Use a makefile build so that we get dependency files => can lint headers separately.
+    # Also suppress -Wmacro-redefined: CPython 3.15 bumped their _POSIX_C_SOURCE requirement
     - |
       cat << EOF >> siteconfig.py
+      makefile_build = True
       gpu = True
       gpu_target = 'hip-amd'
-      gpu_compiler = 'hipcc'
+      gpu_compiler = 'amdclang++'
       gpu_include_dirs = []
       gpu_compile_args = [
           '-g',
           '-O3',
+          '-Wall',
           '--offload-arch=gfx90a',
+          '-Wno-macro-redefined'
           ]
+      extra_compile_args += ['-Wno-macro-redefined']
       libraries += ['amdhip64', 'hipblas']
 
       # MAGMA
       magma = True
       libraries += ['magma']
       EOF
+    # Append include flags etc from the mpi wrapper
+    - python tools/print_mpi_siteconfig.py >> siteconfig.py
     - cat siteconfig.py
-    - pip install -v --user --log build.log --no-build-isolation --editable .
+    # Intercept the build with bear to generate compile_commands.json
+    - bear --config=tools/bear.yml -- pip install -v --user --log build.log --editable . --no-build-isolation
   cache:
     key: cache-build-rocm
     paths:
      - $PIP_CACHE_DIR
+
+
+# Base job for running clang-tidy on diffs for files under c/.
+# On branch pushes without an open MR, this diffs against the merge-base with the default branch.
+# For branches with open MRs, this instead diffs agains the MR base SHA.
+.clang-tidy-diff:
+  stage: build
+  allow_failure: true
+  variables:
+    GIT_DEPTH: "0"
+    # Additive config .yml file for eg. CUDA builds that need special treatment
+    CLANG_TIDY_EXTRA_CONFIG: ""
+  rules:
+    - changes:
+        - c/**/*
+        - .clang-tidy
+        - tools/**/*
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        BASE_SHA="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      else
+        git fetch origin "$CI_DEFAULT_BRANCH"
+        BASE_SHA=$(git merge-base "origin/$CI_DEFAULT_BRANCH" HEAD)
+      fi
+    - >
+      git diff -U0 --no-color "$BASE_SHA" HEAD
+      | clang-tidy-diff -p1 -path . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
+
+
+# Base job for full static analysis on C++ code. Runs on MRs only.
+# This does a clang-tidy pass on all code files under c/,
+# and runs also our manual include-order-checker script.
+.clang-tidy-full:
+  stage: build
+  allow_failure: true
+  variables:
+    CLANG_TIDY_EXTRA_CONFIG: ""
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - c/**/*
+        - .clang-tidy
+        - tools/**/*
+      # Provide a manual trigger for all pipelines
+    - when: manual
+  script:
+    - python tools/check_include_order.py compile_commands.json
+    - run-clang-tidy -p . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
+
+
+clang-tidy-diff-rocm:
+  extends: .clang-tidy-diff
+  image: $IMAGE_ROCM
+  needs:
+    - build-rocm
+
+
+clang-tidy-full-rocm:
+  extends: .clang-tidy-full
+  image: $IMAGE_ROCM
+  needs:
+    - build-rocm
 
 
 build-minimal:
