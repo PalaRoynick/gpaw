@@ -103,6 +103,8 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
         LCAOEigensolver(basis).iterate(
             lcao_ibzwfs, None, potential, hamiltonian)
 
+        potential.needs_recalculation = False  # Potential will be up-to-date.
+
         self.log(f'Converting LCAO to {self.mode} mode', flush=True)
         return lcao_ibzwfs.convert_to(mode=self.mode,
                                       grid=self.grid,

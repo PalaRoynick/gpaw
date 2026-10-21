@@ -35,7 +35,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         """
         self.xp = xp
         self.pw = pw
-        super().__init__(xc, poisson_solver, setups,
+        super().__init__(wf_grid, xc, poisson_solver, setups,
                          relpos_ac=relpos_ac,
                          extensions=extensions,
                          soc=soc)
@@ -50,7 +50,6 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         self.fine_grid = fine_grid
 
         self.distributed_density = grid.comm.size != wf_grid.comm.size
-        self.wf_grid = wf_grid
         self.wf_atomdist = wf_atomdist
         self.kpt_band_comm = kpt_band_comm
 

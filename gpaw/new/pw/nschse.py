@@ -342,7 +342,7 @@ def non_self_consistent_matrix_elements(dft: DFT,
     """
     dft.change(xc=xc)
     # Calculate new potential with hybrid functional:
-    potential = dft.pot_calc.calculate(dft.density)[0]
+    potential = dft.pot_calc.calculate(dft.density, dft.ibzwfs)[0]
 
     hamiltonian = dft.scf_loop.hamiltonian
     apply = partial(hamiltonian.apply,

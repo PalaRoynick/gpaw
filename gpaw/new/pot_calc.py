@@ -35,6 +35,7 @@ from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 class PotentialCalculator:
     def __init__(self,
+                 wf_grid,
                  xc: Functional,
                  poisson_solver,
                  setups: list[Setup],
@@ -42,6 +43,7 @@ class PotentialCalculator:
                  relpos_ac: Array2D,
                  extensions: list | None = None,
                  soc: bool = False):
+        self.wf_grid = wf_grid
         self.poisson_solver = poisson_solver
         self.xc = xc
         self.setups = setups
@@ -84,29 +86,20 @@ class PotentialCalculator:
     def restrict(self, a_r, a_R=None):
         raise NotImplementedError
 
-    def calculate_without_orbitals(self,
-                                   density,
-                                   ibzwfs=None,
-                                   vHt_x: XArray | None = None,
-                                   ) -> tuple[Potential,
-                                              DFTEnergies,
-                                              AtomArrays]:
-        xc = self.xc
-        if xc.exx_fraction != 0.0:
-            from gpaw.new.xc import create_functional
-            self.xc = create_functional('PBE', xc.grid)
-        potential, energies, V_al = self.calculate(
-            density, ibzwfs, vHt_x)
-        if xc.exx_fraction != 0.0:
-            self.xc = xc
-        return potential, energies, V_al
-
     @trace
     def calculate(self,
                   density,
                   ibzwfs=None,
                   vHt_x: XArray | None = None,
                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
+
+        if ibzwfs is None or not ibzwfs.has_occs:
+            # Replace EXX functional with PBE if EXX fraction is non-zero
+            xc = self.xc
+            if xc.exx_fraction != 0.0:
+                from gpaw.new.xc import create_functional
+                self.xc = create_functional('PBE', xc.grid)
+
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, vHt_x))
 
@@ -154,6 +147,10 @@ class PotentialCalculator:
         potential = Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress)
 
         potential = self.redist(potential)
+
+        if ibzwfs is None or not ibzwfs.has_occs:
+            # Restore original XC functional
+            self.xc = xc
 
         return (potential,
                 DFTEnergies(**energies),

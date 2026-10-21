@@ -24,6 +24,7 @@ class Potential:
         self.dedtaut_sR = dedtaut_sR
         self.vHt_x = vHt_x  # initial guess for Hartree potential
         self.e_stress = e_stress  # isotropic stress contribution
+        self.needs_recalculation = True  # Recalculate upon entering scf.
 
     def __repr__(self):
         return (f'Potential({self.vt_sR}, {self.dH_asii}, '
