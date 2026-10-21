@@ -138,7 +138,7 @@ class XArray(Generic[DomainType], XP):
         nm = buffer_mX.mydims[0]
         b = self.mydims[0]
         comm = self.desc.comm
-        if False and comm.size == 1:
+        if comm.size == 1:
             # Fast serial implementation
             if out_nX is not None:  # We use out as the buffer
                 out_nX.data[:] = self.data
