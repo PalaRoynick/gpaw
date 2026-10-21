@@ -44,7 +44,7 @@ def band_structure(dft: DFT,
         builder.wf_atomdist,
         kbcomm1, kbcomm2)
     kbcomm1 = dft.pot_calc.domain_complementary_comm
-    kbcomm2 = builder.communicators['x']
+    kbcomm2 = builder.communicators['X']
     density = dft.density.redist(builder.grid,
                                  builder.interpolation_desc,
                                  builder.atomdist,

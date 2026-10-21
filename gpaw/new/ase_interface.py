@@ -682,7 +682,7 @@ class ASECalculator:
                                      builder.interpolation_desc,
                                      builder.atomdist,
                                      dft.pot_calc.domain_complementary_comm,
-                                     builder.communicators['x'])
+                                     builder.communicators['X'])
         ibzwfs = builder.create_ibz_wave_functions(basis_set, potential)
         ibzwfs.fermi_levels = dft.ibzwfs.fermi_levels
 

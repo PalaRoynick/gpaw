@@ -31,16 +31,21 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         self.electrostatic_potential_desc = self.fine_grid
         self.interpolation_desc = self.fine_grid
 
-    def create_uniform_grids(self):
-        grid = create_uniform_grid(
+    def calculate_number_of_grid_points(self):
+        gpts = calc_gpts(
             self.mode,
             self.params.gpts,
             self.atoms.cell,
             self.atoms.pbc,
             self.ibz.symmetries,
             h=self.params.h,
-            interpolation=self.interpolation_stencil_range,
-            comm=self.communicators['w' if self.distributed_density else 'd'])
+            interpolation=self.interpolation_stencil_range)
+    if realspace:
+        zerobc = [not periodic for periodic in pbc]
+    else:
+        zerobc = [False] * 3
+    # return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)
+
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid

@@ -192,21 +192,40 @@ class DFTComponentsBuilder:
         else:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
+        size_c = self.calculate_number_of_grid_points()
         self.distributed_density = (
-            params.parallel.get('distribute_density', not False) and
-            #xcfunc.type != 'HYB' and
+            params.parallel.get('distribute_density', True) and
             xcfunc.name not in {'QNA', 'TB09'} and
-            comm.size > self.communicators['d'].size)
+            self.communicators['d'].size < comm.size and
+            np.prod(size_c) / world.size >= 8**3)
 
-        self.grid, self.fine_grid = self.create_uniform_grids()
+        log(...)
         if self.distributed_density:
-            self.communicators['x'] = serial_comm
+            self.communicators['x'] = self.communicators['w']
+            self.communicators['X'] = serial_comm
+            zerobc = [False, False, False]
+        else:
+            self.communicators['x'] = self.communicators['d']
+            self.communicators['X'] = self.communicators['D']
+            zerobc = ~atoms.pbc
+
+        self.grid = UGDesc(
+            cell=atoms.cell / Bohr,
+            pbc=atoms.pbc,
+            zerobc=zerobc,
+            size=size_c,
+            comm=self.communicators['x'])
+        self.fine_grid = self.grid.new(size=size_c * 2)
+        self.atomdist = AtomDistribution(
+            self.grid.ranks_from_fractional_positions(self.relpos_ac),
+            self.grid.comm)
+
+        if self.distributed_density:
             self.wf_grid = self.grid.new(comm=self.communicators['d'])
             self.wf_atomdist = AtomDistribution(
                 self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
                 self.wf_grid.comm)
         else:
-            self.communicators['x'] = self.communicators['D']
             self.wf_grid = self.grid
             self.wf_atomdist = self.atomdist
 
@@ -228,12 +247,6 @@ class DFTComponentsBuilder:
     @cached_property
     def nelectrons(self) -> float:
         return self.setups.nvalence - self.charge
-
-    @cached_property
-    def atomdist(self) -> AtomDistribution:
-        return AtomDistribution(
-            self.grid.ranks_from_fractional_positions(self.relpos_ac),
-            self.grid.comm)
 
     def create_uniform_grids(self):
         raise NotImplementedError
@@ -617,25 +630,20 @@ def calculate_number_of_bands(nbands: int | str | None,
     return N
 
 
-def create_uniform_grid(mode: str,
-                        gpts,
-                        cell,
-                        pbc,
-                        symmetries,
-                        h: float | None = None,
-                        interpolation: int | str | None = None,
-                        ecut: float = None,
-                        comm: MPIComm = serial_comm) -> UGDesc:
+def calc_gpts(mode: str,
+              gpts,
+              cell,
+              pbc,
+              symmetries,
+              h: float | None = None,
+              interpolation: int | str | None = None,
+              ecut: float = None) -> np.ndarray:
     """Create grid in a backwards compatible way."""
     cell = cell / Bohr
     if h is not None:
         h /= Bohr
 
     realspace = (mode != 'pw' and interpolation != 'fft')
-    if realspace:
-        zerobc = [not periodic for periodic in pbc]
-    else:
-        zerobc = [False] * 3
 
     if gpts is not None:
         size = gpts
@@ -643,4 +651,4 @@ def create_uniform_grid(mode: str,
         modeobj = SimpleNamespace(name=mode, ecut=ecut)
         size = get_number_of_grid_points(cell, h, modeobj, realspace,
                                          symmetries)
-    return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)
+    return size

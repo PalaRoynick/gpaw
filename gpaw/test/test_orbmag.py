@@ -60,7 +60,9 @@ def test_orbmag_Ni(gpw_files, mpi):
     # Non-collinear calculation with self-consistent spin–orbit
     calc_ncolsoc = mpi.NewGPAW(
         gpw_files['fcc_Ni_ncolsoc'],
-        parallel={'domain': 1, 'band': 1})
+        parallel={'domain': 1,
+                  'distribute_density': False,
+                  'band': 1})
 
     energy_ncolsoc = calc_ncolsoc.get_potential_energy(calc_ncolsoc.atoms)
     assert energy_ncolsoc == pytest.approx(-8.478, abs=1.0e-3)
