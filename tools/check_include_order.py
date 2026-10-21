@@ -112,6 +112,8 @@ def main() -> int:
         for file, violation in bad:
             print(f"  {file}: {violation!r} is preprocessed before Python.h")
         return 1
+    else:
+        print("Python.h include order check OK")
     return 0
 
 
