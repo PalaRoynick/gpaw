@@ -12,7 +12,7 @@ from gpaw.core.matrix import Matrix
 from gpaw.gpu import XP
 from gpaw.mpi import MPIComm
 from gpaw.new import trace
-from gpaw.typing import Array1D, ArrayND, Self
+from gpaw.typing import Array1D, ArrayND, Self, Any
 
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
@@ -91,7 +91,7 @@ class XArray(Generic[DomainType], XP):
             xp = cp
         super().__init__(xp)
         self._matrix: Matrix | None = None
-        self._a2a_stuff = {}
+        self._a2a_stuff: dict[int, tuple[Any, ...]] = {}
 
     def new(self, data=None, dims=None) -> XArray:
         raise NotImplementedError
@@ -132,7 +132,6 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
-
     @trace
     def fullshape_iter_by_dims(self, buffer_mX, out_nX=None):
         nm = buffer_mX.mydims[0]
@@ -154,10 +153,6 @@ class XArray(Generic[DomainType], XP):
                     buffer_aX.data[:] = self.data[start:end]
                 yield mybands, buffer_aX
             return
-
-        ng = self.desc.shape[0]
-        myng = self.desc.myshape[0]
-        maxmyng = self.desc.maxmysize
 
         if out_nX is not None:
             assert out_nX.myshape == self.myshape
