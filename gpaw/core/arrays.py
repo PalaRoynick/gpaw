@@ -91,6 +91,7 @@ class XArray(Generic[DomainType], XP):
             xp = cp
         super().__init__(xp)
         self._matrix: Matrix | None = None
+        self._a2a_stuff = {}
 
     def new(self, data=None, dims=None) -> XArray:
         raise NotImplementedError
@@ -131,24 +132,27 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
+
     @trace
     def fullshape_iter_by_dims(self, buffer_mX, out_nX=None):
         nm = buffer_mX.mydims[0]
         b = self.mydims[0]
         comm = self.desc.comm
-        if comm.size == 1:
+        if False and comm.size == 1:
             # Fast serial implementation
             if out_nX is not None:  # We use out as the buffer
                 out_nX.data[:] = self.data
+                buffer_mX = out_nX[:nm]
 
             for m, start in enumerate(range(0, b, comm.size * nm)):
                 end = min(start + comm.size * nm, b)
                 mybands = np.arange(start, end)
+                buffer_aX = buffer_mX[:len(mybands)]
                 if out_nX is not None:  # We use out as the buffer
-                    buffer_mX = out_nX[start:end]
+                    buffer_aX.data = out_nX.data[start:end]
                 else:
-                    buffer_mX.data[:len(mybands)] = self.data[start:end]
-                yield mybands, buffer_mX[:len(mybands)]
+                    buffer_aX.data[:] = self.data[start:end]
+                yield mybands, buffer_aX
             return
 
         ng = self.desc.shape[0]
@@ -172,8 +176,8 @@ class XArray(Generic[DomainType], XP):
             for offset_index in range(0, max_offset):
                 tmp = in_data[
                     offset_index * comm.size:(offset_index + 1) * comm.size]
-                ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
-                    comm, tmp.shape[0], ng, myng, maxmyng)
+                ssize_r, soffset_r, rsize_r, roffset_r = \
+                    self.a2a_stuff(tmp.shape[0])
                 comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
                                buffer_data[offset_index], rsize_r, roffset_r)
 
@@ -187,8 +191,8 @@ class XArray(Generic[DomainType], XP):
             for offset_index in range(0, max_offset):
                 tmp = out_data[
                     offset_index * comm.size:(offset_index + 1) * comm.size]
-                ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
-                    comm, tmp.shape[0], ng, myng, maxmyng)
+                ssize_r, soffset_r, rsize_r, roffset_r = \
+                    self.a2a_stuff(tmp.shape[0])
                 comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
                                tmp.ravel(), ssize_r, soffset_r)
 
@@ -423,19 +427,29 @@ class XArray(Generic[DomainType], XP):
     def trace_inner_product(self, other: Self) -> float:
         raise NotImplementedError
 
+    def a2a_stuff(self, N):
+        """Create arrays for MPI alltoallv call."""
+        info = self._a2a_stuff.get(N)
+        if info is not None:
+            return info
 
-def a2a_stuff(comm, N, ng, myng, maxmyng):
-    """Create arrays for MPI alltoallv call."""
-    ssize_r = np.zeros(comm.size, int)
-    ssize_r[:N] = myng
-    soffset_r = np.arange(comm.size) * myng
-    soffset_r[N:] = 0
-    roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
-    rsize_r = np.zeros(comm.size, int)
-    if comm.rank < N:
-        rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
-        rsize_r[-1] = ng - roffset_r[-1]
-    return ssize_r, soffset_r, rsize_r, roffset_r
+        comm = self.desc.comm
+        ng = self.desc.shape[0]
+        myng = self.desc.myshape[0]
+        maxmyng = self.desc.maxmysize
+
+        ssize_r = np.zeros(comm.size, int)
+        ssize_r[:N] = myng
+        soffset_r = np.arange(comm.size) * myng
+        soffset_r[N:] = 0
+        roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
+        rsize_r = np.zeros(comm.size, int)
+        if comm.rank < N:
+            rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
+            rsize_r[-1] = ng - roffset_r[-1]
+        info = (ssize_r, soffset_r, rsize_r, roffset_r)
+        self._a2a_stuff[N] = info
+        return info
 
 
 def _parallel_me(psit1_nX: XArray,
