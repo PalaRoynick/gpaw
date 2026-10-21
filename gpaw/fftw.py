@@ -159,7 +159,6 @@ class FFTPlans:
         if coef_nG is None:
             out_nR.scatter_from(None)
             return
-        self.tmp_Q[:] = 0
         if self.blocksize is None:
             pw.paste(coef_nG, self.tmp_Q, self.size_c)
         else:
