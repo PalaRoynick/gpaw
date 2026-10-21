@@ -283,56 +283,6 @@ build-cuda-makefile:
     expire_in: 30 mins
 
 
-# Base job for running clang-tidy on diffs for files under c/.
-# On branch pushes without an open MR, this diffs against the merge-base with the default branch.
-# For branches with open MRs, this instead diffs agains the MR base SHA.
-.clang-tidy-diff:
-  stage: build
-  allow_failure: true
-  variables:
-    GIT_DEPTH: "0"
-    # Additive config .yml file for eg. CUDA builds that need special treatment
-    CLANG_TIDY_EXTRA_CONFIG: ""
-  rules:
-    - changes:
-        - c/**/*
-        - .clang-tidy
-        - tools/**/*
-  script:
-    - git config --global --add safe.directory "$CI_PROJECT_DIR"
-    - |
-      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
-        BASE_SHA="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
-      else
-        git fetch origin "$CI_DEFAULT_BRANCH"
-        BASE_SHA=$(git merge-base "origin/$CI_DEFAULT_BRANCH" HEAD)
-      fi
-    - >
-      git diff -U0 --no-color "$BASE_SHA" HEAD
-      | clang-tidy-diff.py -p1 -path . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
-
-
-# Base job for full static analysis on C++ code. Runs on MRs only.
-# This does a clang-tidy pass on all code files under c/, and runs also our manual
-# include-order-checker script.
-.clang-tidy-full:
-  stage: build
-  allow_failure: true
-  variables:
-    CLANG_TIDY_EXTRA_CONFIG: ""
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - c/**/*
-        - .clang-tidy
-        - tools/**/*
-      # Provide a manual trigger for all pipelines
-    - when: manual
-  script:
-    - python tools/check_include_order.py compile_commands.json
-    - run-clang-tidy -p . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
-
-
 build-rocm:
   image: $IMAGE_ROCM
   extends:
@@ -379,6 +329,56 @@ build-rocm:
       - _gpaw.*.so
       - "*.log"
       - compile_commands.json
+
+
+# Base job for running clang-tidy on diffs for files under c/.
+# On branch pushes without an open MR, this diffs against the merge-base with the default branch.
+# For branches with open MRs, this instead diffs agains the MR base SHA.
+.clang-tidy-diff:
+  stage: build
+  allow_failure: true
+  variables:
+    GIT_DEPTH: "0"
+    # Additive config .yml file for eg. CUDA builds that need special treatment
+    CLANG_TIDY_EXTRA_CONFIG: ""
+  rules:
+    - changes:
+        - c/**/*
+        - .clang-tidy
+        - tools/**/*
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        BASE_SHA="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      else
+        git fetch origin "$CI_DEFAULT_BRANCH"
+        BASE_SHA=$(git merge-base "origin/$CI_DEFAULT_BRANCH" HEAD)
+      fi
+    - >
+      git diff -U0 --no-color "$BASE_SHA" HEAD
+      | clang-tidy-diff -p1 -path . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
+
+
+# Base job for full static analysis on C++ code. Runs on MRs only.
+# This does a clang-tidy pass on all code files under c/, and runs also our manual
+# include-order-checker script.
+.clang-tidy-full:
+  stage: build
+  allow_failure: true
+  variables:
+    CLANG_TIDY_EXTRA_CONFIG: ""
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - c/**/*
+        - .clang-tidy
+        - tools/**/*
+      # Provide a manual trigger for all pipelines
+    - when: manual
+  script:
+    - python tools/check_include_order.py compile_commands.json
+    - run-clang-tidy -p . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
 
 
 clang-tidy-diff-rocm:
