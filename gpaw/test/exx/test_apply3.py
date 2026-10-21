@@ -36,7 +36,6 @@ def test_apply3(a=5.0, N=10, dtype=float, calculate_energy=True):
         grid, pw, xc,
         Setups([6] * N, 'paw', {}, 'LDA'),
         relpos_ac,
-        atomdist=AtomDistribution.from_number_of_atoms(N),
         log=print,
         bz=bz,
         kpt_comm=world,
