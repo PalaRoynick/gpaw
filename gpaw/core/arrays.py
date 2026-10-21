@@ -132,7 +132,7 @@ class XArray(Generic[DomainType], XP):
         return self.new(data=self.data.copy())
 
     @trace
-    def iter_by_band(self, buffer_mX, out_nX=None):
+    def fullshape_iter_by_dims(self, buffer_mX, out_nX=None):
         nm = buffer_mX.mydims[0]
         b = self.mydims[0]
         comm = self.desc.comm
@@ -146,9 +146,6 @@ class XArray(Generic[DomainType], XP):
                 yield mybands, buffer_mX[:len(mybands)]
                 if out_nX is not None:
                     out_nX.data[start:end] = buffer
-
-            # We add one extra yield to ensure cleanup
-            yield np.array([]), []
             return
 
         ng = self.desc.shape[0]
@@ -162,7 +159,8 @@ class XArray(Generic[DomainType], XP):
         buffer_data = buffer_mX.data
         extra = prod(self.mydims[1:])
         assert extra == prod(buffer_mX.mydims[1:])
-        assert extra == 1, 'Stop it with the non-collinear'
+        if extra > 1:
+            raise NotImplementedError('TODO, but currently not needed.')
         for m, start in enumerate(range(0, b, comm.size * nm)):
             end = min(start + comm.size * nm, b)
             in_data = self.data[start:end]
@@ -190,9 +188,6 @@ class XArray(Generic[DomainType], XP):
                     comm, tmp.shape[0], ng, myng, maxmyng)
                 comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
                                tmp.ravel(), ssize_r, soffset_r)
-
-        # We add one extra yield to ensure cleanup
-        yield np.array([]), []
 
     def sanity_check(self) -> None:
         """Sanity check."""

@@ -15,7 +15,7 @@ from gpaw.new.hamiltonian import Hamiltonian
 
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, dtype, xp=np, blocksize: None | int = None):
-        self.blocksize = blocksize or (2 if xp is np else 8)
+        self.blocksize = blocksize or (1 if xp is np else 16)
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
 
@@ -56,7 +56,7 @@ class PWHamiltonian(Hamiltonian):
         Q_G = pw_local.indices(tmp_Q.shape[-3:])
 
         # Apply the potential
-        for y, psit_yG in psit_nG.iter_by_band(psit_xG, out_nG):
+        for y, psit_yG in psit_nG.fullshape_iter_by_dims(psit_xG, out_nG):
             if len(y) == 0:
                 # This rank got no data
                 continue

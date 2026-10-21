@@ -741,7 +741,7 @@ class PWArray(XArray[PWDesc]):
         a_nG = self
 
         # Undistributed work arrays:
-        blocksize = 1 if self.xp is np else 8
+        blocksize = 1 if self.xp is np else 16
         desc0 = out.desc.new(comm=None, dtype=pw.dtype)
         pw0 = pw.new(comm=None)
         plan = desc0.fft_plans(blocksize=blocksize, xp=xp)
@@ -751,7 +751,7 @@ class PWArray(XArray[PWDesc]):
         weights = xp.asarray(weights)
 
         (N,) = self.mydims
-        for n_x, a_xG in a_nG.iter_by_band(a_yG):
+        for n_x, a_xG in a_nG.fullshape_iter_by_dims(a_yG):
             # TODO: Vectorize
             if len(n_x) == 0:
                 # This rank has no data.
@@ -882,7 +882,7 @@ class PWArray(XArray[PWDesc]):
         Gplusk1_Gv = as_xp(Gplusk1_Gv, xp=xp)
 
         (N,) = psit_nG.mydims
-        for y, psit_yG in psit_nG.iter_by_band(psit_xG):
+        for y, psit_yG in psit_nG.fullshape_iter_by_dims(psit_xG):
             # TODO: Vectorize me
             if len(y) == 0:
                 # This rank got no data
