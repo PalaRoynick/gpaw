@@ -46,6 +46,8 @@ stages:
     BEAR_CONFIG: "tools/bear.yml"
     # Compiler executable to use for non-GPU parts. Can be overriden in jobs deriving from this
     GPAW_COMPILER: "mpic++"
+    # Whether to pass -Werror in siteconfig.py
+    GPAW_WERROR: "true"
   before_script:
     - !reference [default, before_script]
     # Centralized "pip install gpaw" entry point. Usage:
@@ -82,6 +84,10 @@ stages:
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - pip install coverage
     - |
+      werror_flag=""
+      if [ "$GPAW_WERROR" = "true" ]; then
+        werror_flag="'-Werror',"
+      fi
       cat << EOF > siteconfig.py
       mpi = True
       compiler = '$GPAW_COMPILER'
@@ -94,7 +100,7 @@ stages:
                             '-g',
                             '-fopenmp',
                             '-Wall',
-                            '-Werror',
+                            $werror_flag
                             ]
       extra_link_args = ['-fopenmp']
 
@@ -336,7 +342,8 @@ build-rocm:
     - mi210
   variables:
     # Don't use an mpi wrapper, makes clang analysis harder.
-    GPAW_COMPILER: "g++"
+    GPAW_COMPILER: "amdclang++"
+    GPAW_WERROR: "false"
   script:
     - |
       cat << EOF >> siteconfig.py
@@ -347,6 +354,7 @@ build-rocm:
       gpu_compile_args = [
           '-g',
           '-O3',
+          '-Wall',
           '--offload-arch=gfx90a',
           ]
       libraries += ['amdhip64', 'hipblas']
