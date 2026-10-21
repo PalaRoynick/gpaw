@@ -17,4 +17,4 @@ from gpaw.cli.main import main
      '--soc'])
 def test_dos(gpw_files, options):
     args = ('dos ' + str(gpw_files['bcc_li_pw']) + ' ' + options).split()
-    main(args)
+    main(args, initialize_globals=False)

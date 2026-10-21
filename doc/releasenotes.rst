@@ -12,6 +12,12 @@ Git master branch
 
 * Minimum version requirements: Python 3.11, ASE 3.29.0.
 
+* **Breaking change**:
+  The deprecated ``gpaw -P N python SCRIPT`` syntax has been removed.
+  Use the new syntax ``mpiexec -n N gpaw python SCRIPT``
+  or a similar command to run
+  parallel computations, as documented :ref:`in GPAW 26.7.0 <mpichanges>`.
+
 * GPAW compiled extension now requires a C++17 compliant compiler. Support for
   C99 compilation was dropped in the previous release.
 
