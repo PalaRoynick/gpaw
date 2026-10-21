@@ -14,7 +14,7 @@ class PWDescriptor:
 
     def __init__(self, ecut, gd, dtype=None, kd=None,
                  fftwflags=fftw.MEASURE, gammacentered=False,
-                 _new=False, blocksize=1):
+                 _new=False, blocksize=None):
 
         assert gd.pbc_c.all()
 
@@ -215,7 +215,7 @@ class PWDescriptor:
             if Q_G is None:
                 q = q or 0
                 Q_G = self.Q_qG[q]
-            if self.blocksize > 1:
+            if self.blocksize is not None:
                 f_G = self.tmp_Q.reshape(self.blocksize, -1)[:, Q_G]
             else:
                 f_G = self.tmp_Q.ravel()[Q_G]
