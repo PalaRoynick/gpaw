@@ -295,7 +295,8 @@ build-rocm:
     GPAW_COMPILER: "amdclang++"
     GPAW_WERROR: "false"
   script:
-    # Use a makefile build so that we get dependency files => can lint headers separately
+    # Use a makefile build so that we get dependency files => can lint headers separately.
+    # Also suppress -Wmacro-redefined: CPython 3.15 bumped their _POSIX_C_SOURCE requirement
     - |
       cat << EOF >> siteconfig.py
       makefile_build = True
@@ -308,8 +309,9 @@ build-rocm:
           '-O3',
           '-Wall',
           '--offload-arch=gfx90a',
-          '-v'
+          '-Wno-macro-redefined'
           ]
+      extra_compile_args += ['-Wno-macro-redefined']
       libraries += ['amdhip64', 'hipblas']
 
       # MAGMA
