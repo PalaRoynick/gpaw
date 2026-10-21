@@ -37,4 +37,4 @@ def test_fft(plan_info, dtype):
     flags = plan_info[1]
     tplan, tfft = check(Plans, flags, dtype)
     print('%-12s %3d %10.6f %10.6f' %
-        (Plans.__name__, flags, tplan, tfft))
+          (Plans.__name__, flags, tplan, tfft))
