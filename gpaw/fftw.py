@@ -164,7 +164,7 @@ class FFTPlans:
             pw.paste(coef_nG, self.tmp_Q, self.size_c)
         else:
             blocksize = coef_nG.shape[0]
-            assert self.blocksize >= blocksize, f'{self.blocksize} < {blocksize}'
+            assert self.blocksize >= blocksize
             pw.paste(coef_nG, self.tmp_Q[:blocksize], self.size_c)
 
         if np.issubdtype(pw.dtype, np.floating):
@@ -180,7 +180,8 @@ class FFTPlans:
 
         self.ifft()
         if out_nR is not None:
-            out_nR.scatter_from(self.tmp_R)
+            out_nR.scatter_from(self.tmp_R if self.blocksize is None
+                                else self.tmp_R[:blocksize])
 
     def fft_sphere(self, in_nR, pw):
         self.tmp_R[:] = in_nR
@@ -264,7 +265,7 @@ class CuPyFFTPlans(FFTPlans):
     def __init__(self,
                  size_c: IntVector,
                  dtype: DTypeLike,
-                 blocksize: int = 1):
+                 blocksize: int | None = None):
         from gpaw.gpu import cupy as cp
         self.dtype = dtype
         super().__init__(size_c, dtype, empty=cp.empty,

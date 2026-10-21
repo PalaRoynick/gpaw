@@ -212,11 +212,12 @@ class XArray(Generic[DomainType], XP):
             yield self[index]
 
     def flat(self) -> Self:
-        if self.dims == ():
-            yield self
+        if len(self.dims) == 1:
+            return self
         else:
-            for index in np.indices(self.dims).reshape((len(self.dims), -1)).T:
-                yield self[tuple(index)]
+            return self.new(
+                data=self.data.reshape((prod(self.dims), *self.myshape)),
+                dims=(prod(self.dims)))
 
     def to_xp(self, xp):
         if xp is self.xp:

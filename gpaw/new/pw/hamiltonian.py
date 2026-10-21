@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 
 from gpaw.core.arrays import XArray
-from gpaw.core.plane_waves import PWArray
+from gpaw.core.plane_waves import PWArray, PWDesc
 from gpaw.core.uniform_grid import UGArray
 from gpaw.gpu import cupy as cp
 from gpaw.new import trace, zips
@@ -14,8 +14,8 @@ from gpaw.new.hamiltonian import Hamiltonian
 
 
 class PWHamiltonian(Hamiltonian):
-    def __init__(self, grid, dtype, xp=np):
-        self.blocksize = 2 if xp is np else 8
+    def __init__(self, grid, dtype, xp=np, blocksize: None | int = None):
+        self.blocksize = blocksize or (2 if xp is np else 8)
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
 
@@ -24,7 +24,7 @@ class PWHamiltonian(Hamiltonian):
         # It's a bit too expensive to create all the local PW-descriptors
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
-        self.pw_cache = {}
+        self.pw_cache: dict[tuple[int, ...], PWDesc] = {}
 
     @trace
     def apply_local_potential(self,
@@ -39,16 +39,18 @@ class PWHamiltonian(Hamiltonian):
         vt_R = vt_R.gather(broadcast=True)
 
         plan = self.plan
-        tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
+        tmp_R = plan.tmp_R
         tmp_Q = plan.tmp_Q
         if pw.comm.size == 1:
             pw_local = pw
         else:
             key = tuple(pw.kpt_c)
-            pw_local = self.pw_cache.get(key)
-            if pw_local is None:
+            tmp = self.pw_cache.get(key)
+            if tmp is None:
                 pw_local = pw.new(comm=None)
                 self.pw_cache[key] = pw_local
+            else:
+                pw_local = tmp
         psit_xG = pw_local.empty(self.blocksize, xp=xp)
         e_kin_G = xp.asarray(pw_local.ekin_G)
         Q_G = pw_local.indices(tmp_Q.shape[-3:])

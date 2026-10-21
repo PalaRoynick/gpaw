@@ -503,12 +503,23 @@ class PWArray(XArray[PWDesc]):
 
         plan = plan or out.desc.fft_plans(blocksize=blocksize, xp=xp)
         this = self.gather()
-        if this is not None:
-            for coef_G, out1 in zips(this._arrays(), out.flat()):
-                plan.ifft_sphere(coef_G, self.desc, out1)
+
+        if plan.blocksize is not None:
+            N = prod(self.dims)
+            coef_NG = None if this is None else this._arrays()
+            out_NR = out.flat()
+            for n1 in range(0, N, plan.blocksize):
+                n2 = min(n1 + plan.blocksize, N)
+                plan.ifft_sphere(
+                    coef_NG if coef_NG is None else coef_NG[n1:n2],
+                    self.desc, out_NR[n1:n2])
         else:
-            for out1 in out.flat():
-                plan.ifft_sphere(None, self.desc, out1)
+            if this is not None:
+                for coef_G, out1 in zips(this._arrays(), out.flat()):
+                    plan.ifft_sphere(coef_G, self.desc, out1)
+            else:
+                for out1 in out.flat():
+                    plan.ifft_sphere(None, self.desc, out1)
 
         if not periodic:
             out.multiply_by_eikr()
