@@ -22,6 +22,24 @@ class KPoint:
         self.k_c = k_c  # k-point coordinates
 
 
+class LazyRealSpaceWaveFunctions:
+    """Transform wave functions to real space one band at a time.
+
+    Indexing with a local band index returns ut_R for that band only, so
+    that the full ut_nR array never has to be held in memory."""
+
+    def __init__(self, gs, K, ik, psit_nG, na):
+        self.gs = gs
+        self.K = K
+        self.ik = ik
+        self.psit_nG = psit_nG
+        self.na = na
+
+    def __getitem__(self, n):
+        return self.gs.ibz2bz[self.K].map_pseudo_wave(
+            self.gs.pd.ifft(self.psit_nG[self.na + n], self.ik))
+
+
 class KPointPair:
     """This class defines the kpoint-pair container object.
 
@@ -55,7 +73,7 @@ class KPointPairFactory:
         assert self.gs.world.size == 1
 
     @timer('Get a k-point')
-    def get_k_point(self, s, K, n1, n2, blockcomm=None):
+    def get_k_point(self, s, K, n1, n2, blockcomm=None, lazy=False):
         """Return wave functions for a specific k-point and spin.
 
         s: int
@@ -64,6 +82,9 @@ class KPointPairFactory:
             BZ k-point index.
         n1, n2: int
             Range of bands to include.
+        lazy: bool
+            Transform wave functions to real space on demand, one band at a
+            time, instead of storing ut_nR for all bands.
         """
 
         assert n1 <= n2
@@ -95,10 +116,13 @@ class KPointPairFactory:
 
         with self.context.timer('load wfs'):
             psit_nG = kpt.psit_nG
-            ut_nR = gs.gd.empty(nb - na, gs.dtype)
-            for n in range(na, nb):
-                ut_nR[n - na] = self.gs.ibz2bz[K].map_pseudo_wave(
-                    gs.pd.ifft(psit_nG[n], ik))
+            if lazy:
+                ut_nR = LazyRealSpaceWaveFunctions(gs, K, ik, psit_nG, na)
+            else:
+                ut_nR = gs.gd.empty(nb - na, gs.dtype)
+                for n in range(na, nb):
+                    ut_nR[n - na] = self.gs.ibz2bz[K].map_pseudo_wave(
+                        gs.pd.ifft(psit_nG[n], ik))
 
         with self.context.timer('Load projections'):
             if nb - na > 0:
@@ -127,7 +151,9 @@ class KPointPairFactory:
         s2 = (s + flipspin) % 2
 
         with self.context.timer('get k-points'):
-            kpt1 = self.get_k_point(s1, K1, n1, n2)
+            # kpt1 bands are only ever accessed one at a time, so there is
+            # no need to hold all of them in real space simultaneously.
+            kpt1 = self.get_k_point(s1, K1, n1, n2, lazy=True)
             kpt2 = self.get_k_point(s2, K2, m1, m2, blockcomm=blockcomm)
 
         with self.context.timer('fft indices'):

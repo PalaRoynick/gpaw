@@ -239,12 +239,14 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
                                   optical=False, n1=n1, n2=n2, m1=m1, m2=m2)
 
-        chi0_body.data_WgG[:] /= prefactor
         if self.hilbert:
-            # Allocate a temporary array for the spectral function
+            # Allocate a temporary array for the spectral function. The
+            # chi0_body array is not touched until after the integration, so
+            # that it does not have to be allocated at the same time.
             out_WgG = chi0_body.zeros()
         else:
             # Use the preallocated array for direct updates
+            chi0_body.data_WgG[:] /= prefactor
             out_WgG = chi0_body.data_WgG
         self.integrator.integrate(domain=domain,  # Integration domain
                                   integrand=integrand,
@@ -262,8 +264,10 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
                                       timeordered=self.timeordered)
                 ht(out_WgG)
             # Update the actual chi0 array
-            chi0_body.data_WgG[:] += out_WgG
-        chi0_body.data_WgG[:] *= prefactor
+            out_WgG *= prefactor
+            chi0_body.add_array(out_WgG)
+        else:
+            chi0_body.data_WgG[:] *= prefactor
 
         tmp_chi0_wGG = chi0_body.copy_array_with_distribution('wGG')
         with self.context.timer('symmetrize_wGG'):
