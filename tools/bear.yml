@@ -1,0 +1,13 @@
+# Config for Bear compilation database generator
+
+schema: "4.2"
+# Produce an entry for each header, even though they are not compiled directly.
+# Useful for getting them linted by clang-tidy
+headers:
+  enabled: true
+  strategy: dependency-files
+sources:
+  directories:
+    # Cuda workaround: don't produce targets for intermediate "cudafe" files
+    - path: /tmp
+      action: exclude

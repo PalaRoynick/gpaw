@@ -1,0 +1,7 @@
+# Appends clang-tidy config needed for nvcc builds
+
+InheritParentConfig: true
+# Keep in sync with our minimum cuda_arch requirement
+ExtraArgsBefore: ['--cuda-gpu-arch=sm_70']
+# Ignore CUDA args that clang doesn't recognize
+RemovedArgs: ['-gencode', '-forward-unknown-opts', '-arch=sm_70', '--expt-relaxed-constexpr']
