@@ -78,7 +78,7 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         extensions = self.get_extensions()
         poisson_solver = self.create_poisson_solver(extensions)
         try:
-            pot_calc =  FDPotentialCalculator(
+            pot_calc = FDPotentialCalculator(
                 self.grid,
                 self.fine_grid,
                 self.setups,
