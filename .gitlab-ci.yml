@@ -1,3 +1,12 @@
+workflow:
+  rules:
+    # Don't create duplicate pipelines for a push to a branch that has an open MR
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    # Otherwise create the pipeline in all standard cases, including scheduled ones
+    - when: always
+
+
 variables:
   PYTHONUSERBASE: ".local"
   DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
@@ -81,38 +90,6 @@ stages:
       - _gpaw.*.so
       - "*.log"
     expire_in: 30 mins
-
-
-.lumi-job:
-  tags:
-    - lumi
-  rules:
-    - if: ($GITLAB_USER_LOGIN == "jensj" || $GITLAB_USER_LOGIN == "mikaelkuisma" || $GITLAB_USER_LOGIN == "trossi") && ($CI_PIPELINE_SOURCE == "push")
-      allow_failure: true
-  id_tokens:
-    CI_JOB_JWT:
-      aud: https://gitlab.com
-
-
-.lumi-g-job:
-  extends: .lumi-job
-  variables:
-    LUMI_PROJECT: "project_465000939"
-    SCHEDULER_PARAMETERS: "-A $LUMI_PROJECT -N 1 --ntasks-per-node=1 --gpus-per-node=1 -t 00:10:00 -p small-g"
-  before_script:
-    - export EBU_USER_PREFIX=/projappl/$LUMI_PROJECT/EasyBuild
-    - module load cray-python/3.11.7
-    - module load LUMI/24.03
-    - module load partition/G
-    - module load cpeGNU/24.03
-    - module load rocm/6.0.3
-    - module load cray-fftw/3.3.10.7
-    - module load CuPy/13.2.0-cpeGNU-24.03-rocm             # from EBU_USER_PREFIX
-    - module load ELPA/2024.05.001-cpeGNU-24.03-rocm        # from EBU_USER_PREFIX
-    - module load libxc/6.2.2-cpeGNU-24.03                  # from EBU_USER_PREFIX
-    - export GPAW_SETUP_PATH=/projappl/$LUMI_PROJECT/gpaw-setups-24.1.0
-    - export MPICH_GPU_SUPPORT_ENABLED=1
-    - !reference [default, before_script]
 
 
 build:
@@ -305,58 +282,6 @@ build-cuda-minimal:
     key: cache-build-cuda
     paths:
      - $PIP_CACHE_DIR
-
-
-build-lumi-g:
-  extends:
-    - .build
-    - .lumi-g-job
-  when: manual
-  script:
-    - module load buildtools-python/24.03-cray-python3.11
-    - |
-      cat << EOF > siteconfig.py
-      mpi = True
-      compiler = 'CC'
-      compiler_args = []
-      libraries = []
-      library_dirs = []
-      include_dirs = []
-      extra_compile_args = [
-          '-g',
-          '-O3',
-          '-fopenmp',
-          '-fPIC',
-          '-Wall',
-          '-Wno-stringop-overflow',  # suppress warnings from MPI_STATUSES_IGNORE
-          # '-Werror',
-          ]
-      extra_link_args = ['-fopenmp']
-
-      fftw = True
-      libraries += ['fftw3']
-
-      scalapack = True
-
-      libraries += ['xc']
-
-      define_macros += [('GPAW_ASYNC', None)]
-
-      gpu = True
-      gpu_target = 'hip-amd'
-      gpu_compiler = 'hipcc'
-      gpu_include_dirs = []
-      gpu_compile_args = [
-          '-g',
-          '-O3',
-          '--offload-arch=gfx90a',
-          ]
-      libraries += ['amdhip64', 'hipblas']
-      EOF
-    - cat siteconfig.py
-    - pip install --user --no-deps ase==3.23.0
-    - pip install --user --no-deps -v --log build.log --editable .
-    - gpaw info
 
 
 prepare-libxc:
@@ -575,32 +500,6 @@ test-rocm-mpi:
     - gpaw info
     - GPAW_DEBUG=1 mpiexec -n 2 gpaw python -m pytest -v -x -m gpu
     - mpiexec -n 4 gpaw python -m pytest -v -x -m gpu
-
-
-test-lumi-g:
-  extends:
-    - .test
-    - .lumi-g-job
-  needs:
-    - build-lumi-g
-  script:
-    - rocm-smi || true  # rocm-smi yields non-zero return code
-    - gpaw info
-    - pytest -v -m gpu
-
-
-test-lumi-g-mpi:
-  extends:
-    - .test
-    - .lumi-g-job
-  needs:
-    - build-lumi-g
-  variables:
-    SCHEDULER_PARAMETERS: "-A $LUMI_PROJECT -N 1 --ntasks-per-node=2 --gpus-per-node=2 -t 00:10:00 -p small-g"
-  script:
-    - rocm-smi || true  # rocm-smi yields non-zero return code
-    - gpaw info
-    - srun gpaw python -m pytest -v -m gpu
 
 
 test-libxc:
