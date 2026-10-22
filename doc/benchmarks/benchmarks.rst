@@ -124,3 +124,9 @@ History
 ------------
 
 * Using old default for density convergence.
+
+
+2026, October
+-------------
+
+* Add :mol:`Au_310` cluster.
