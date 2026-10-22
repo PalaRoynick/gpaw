@@ -207,7 +207,7 @@ def parse_upf(fname):
                                  int(attr['l']),
                                  toarray(element),
                                  float(attr['occupation']),
-                                 int(attr['n']))
+                                 int(attr['n']) if 'n' in attr else None)
             pp['states'].append(state)
     else:
         state_data = []
@@ -227,6 +227,11 @@ def parse_upf(fname):
     # assert len(pp['states']) > 0
 
     pp['rhoatom'] = toarray(root.find('PP_RHOATOM'))
+    nlcc = root.find('PP_NLCC')
+    if nlcc is not None:
+        pp['nlcc'] = toarray(nlcc)
+    else:
+        pp['nlcc'] = None
     return pp
 
 
