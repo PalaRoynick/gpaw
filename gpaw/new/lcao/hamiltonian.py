@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import numpy as np
 
-from gpaw.core.atom_arrays import AtomArrays
+from gpaw.core.atom_arrays import AtomArrays, AtomArraysLayout
 from gpaw.core.matrix import Matrix
 from gpaw.external import ExternalPotential
 from gpaw.lfc import BasisFunctions
-from gpaw.new import zips
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
-from gpaw.typing import Array2D, Array3D
+from gpaw.typing import Array3D
 from gpaw.utilities import unpack_hermitian
 
 
@@ -169,18 +168,22 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
         W_aL = pot_calc.ghat_aLr.integrate(vext_r)
 
         assert ibzwfs.ibz.bz.gamma_only
-        setups_a = ibzwfs._wfs_u[0].setups
 
         self.V_sxMM = [V_MM for s in range(self.nspins)]
-        self.dH_saii = [{a: unpack_hermitian(setups_a[a].Delta_pL @ W_L)
-                         for (a, W_L) in W_aL.items()}
-                        for s in range(self.nspins)]
+
+        setup_a = ibzwfs._wfs_u[0].setups
+        self.dH_asii = AtomArraysLayout(
+            [(setup.ni, setup.ni) for setup in setup_a],
+            atomdist=W_aL.layout.atomdist).empty(self.nspins)
+        for a, W_L in W_aL.items():
+            dH_ii = unpack_hermitian(setup_a[a].Delta_pL @ W_L)
+            self.dH_asii[a][:] = dH_ii
 
     def create_hamiltonian_matrix_calculator(self,
                                              potential,
                                              ) -> HamiltonianMatrixCalculator:
         # The supplied potential is ignored.
         # We are kicking with the potential stored by the init
-        return CollinearHamiltonianMatrixCalculator(self.V_sxMM, self.dH_saii,
+        return CollinearHamiltonianMatrixCalculator(self.V_sxMM, self.dH_asii,
                                                     self.basis,
                                                     include_kinetic=False)
