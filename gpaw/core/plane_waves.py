@@ -381,6 +381,9 @@ class PWArray(XArray[PWDesc]):
         return txt + ')'
 
     def __getitem__(self, index: int | slice) -> PWArray:
+        if self.comm.size == 1 and isinstance(index, slice) \
+                and index.stop == len(self.data) and index.start in (0, None):
+            return self
         data = self.data[index]
         return PWArray(self.desc,
                        data.shape[:-1],
