@@ -319,7 +319,8 @@ static PyMethodDef functions[] = {
     {"dH_aii_times_P_ani_gpu", dH_aii_times_P_ani_gpu, METH_VARARGS, 0},
     {"evaluate_lda_gpu", evaluate_lda_gpu, METH_VARARGS, 0},
     {"evaluate_pbe_gpu", evaluate_pbe_gpu, METH_VARARGS, 0},
-    {"calculate_residuals_gpu", calculate_residual_gpu, METH_VARARGS, 0},
+    {"calculate_residuals_gpu",
+        (PyCFunction)(void (*)(void))calculate_residual_gpu, METH_FASTCALL, 0},
 
     {"flush_pending_decrefs", flush_pending_decrefs, METH_NOARGS, 0},
 

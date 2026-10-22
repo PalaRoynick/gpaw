@@ -40,6 +40,6 @@ PyObject* add_to_density_gpu(PyObject* self, PyObject* args);
 PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
-PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
+PyObject* calculate_residual_gpu(PyObject* self, PyObject* const* args, Py_ssize_t nargs);
 
 PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
