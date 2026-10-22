@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 from ase.units import Bohr, Ha, _e
+from scipy.special import erf
 
 from gpaw import ConvergenceError
 from gpaw.core import PWArray, UGArray
@@ -658,13 +659,17 @@ class SlabRegion(JelliumRegion):
         Freeze a relative (negative) lower limit at the value it has for
         the first geometry, so that it does not adapt to a change in the
         atomic positions during a relaxation.
+    width:
+        Width in Å of the error-function edges of the region; 0 gives
+        sharp edges.
     """
 
     def __init__(self,
                  top: float | None = None,  # Å; default: -1.0
                  bottom: float | str | None = None,  # Å; default: -3.0
                  thickness: float | None = None,  # Å
-                 fix_bottom: bool = False):
+                 fix_bottom: bool = False,
+                 width: float = 0.3):  # Å
         if isinstance(bottom, str):
             raise ValueError(
                 f'Unknown lower limit for the jellium region: {bottom!r}.  '
@@ -685,11 +690,13 @@ class SlabRegion(JelliumRegion):
         self.bottom: float | None = bottom
         self.thickness: float | None = thickness
         self.fix_bottom = fix_bottom
+        self.width = width
         self._frozen_bottom: float | None = None
 
     def todict(self) -> dict:
         return {'top': self.top, 'bottom': self.bottom,
-                'thickness': self.thickness, 'fix_bottom': self.fix_bottom}
+                'thickness': self.thickness, 'fix_bottom': self.fix_bottom,
+                'width': self.width}
 
     @property
     def follows_atoms(self) -> bool:
@@ -748,13 +755,19 @@ class SlabRegion(JelliumRegion):
         return self.limits(height, relpos_ac[:, 2].max() * height)
 
     def mask(self, grid, relpos_ac) -> tuple[UGArray, float, float]:
-        """Build the 0/1 mask of the region, plus its limits in Å."""
+        """Build the 0...1 floating-point mask of the region,
+        plus its limits in Å."""
         height = grid.cell_cv[2, 2] * Bohr
         bottom, top = self.limits(height, relpos_ac[:, 2].max() * height)
         z_r = grid.xyz()[:, :, :, 2]
         mask_r = grid.empty()
-        mask_r.data[:] = np.logical_and(z_r > bottom / Bohr,
-                                        z_r < top / Bohr)
+        if self.width > 0.0:
+            w = self.width / Bohr
+            mask_r.data[:] = 0.5 * (erf((z_r - bottom / Bohr) / w) -
+                                    erf((z_r - top / Bohr) / w))
+        else:
+            mask_r.data[:] = np.logical_and(z_r > bottom / Bohr,
+                                            z_r < top / Bohr)
         return mask_r, bottom, top
 
 

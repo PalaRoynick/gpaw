@@ -157,7 +157,7 @@ def test_move_always_rebuilds_without_a_key():
 
 
 def test_mask():
-    mask_r, bottom, top = SlabRegion(bottom=8.0, top=12.0).mask(
+    mask_r, bottom, top = SlabRegion(bottom=8.0, top=12.0, width=0.0).mask(
         grid, relpos_ac)
     assert (bottom, top) == (8.0, 12.0)
     # The mask is 1 strictly inside the region and 0 outside:

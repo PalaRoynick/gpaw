@@ -1,6 +1,7 @@
 import numpy as np
 from ase.data.vdw import vdw_radii
 from ase.units import Bohr, Hartree, kB
+from scipy.special import erfc, erfcx
 
 from gpaw.fd_operators import Gradient
 from gpaw.old.logger import indent
@@ -226,18 +227,27 @@ class EffectivePotentialCavity(Cavity):
                  effective_potential,
                  temperature,
                  surface_calculator=None,
-                 volume_calculator=None):
+                 volume_calculator=None,
+                 top_ramp=None):
         """Constructor for the EffectivePotentialCavity class.
 
         Additional arguments not present in base Cavity class:
         effective_potential -- A Potential instance.
         temperature         -- Temperature for the Boltzmann distribution
                                in Kelvin.
+        top_ramp            -- (depth, width) in Angstrom, or None.
+                               Multiplies the cavity by
+                               0.5 * erfc((z - (L - depth)) / width), so
+                               the solvent does not jump to vacuum at the
+                               periodic boundary.  Only if z is periodic.
         """
         super().__init__(surface_calculator, volume_calculator)
         self.effective_potential = Potential.from_dict(effective_potential)
         self.temperature = float(temperature)
         self.minus_beta = -1. / (kB * temperature / Hartree)
+        self.top_ramp = top_ramp
+        self.ramp = False
+        self.grad_u_vg = None
 
     def todict(self):
         return {
@@ -245,6 +255,8 @@ class EffectivePotentialCavity(Cavity):
                 'name': self.effective_potential.__class__.__name__,
                 **self.effective_potential.todict()},
             'temperature': self.temperature,
+            **({} if self.top_ramp is None else
+               {'top_ramp': list(self.top_ramp)}),
             **super().todict()}
 
     def write(self, writer):
@@ -274,12 +286,17 @@ class EffectivePotentialCavity(Cavity):
     def allocate(self):
         Cavity.allocate(self)
         self.effective_potential.allocate()
+        self.ramp = bool(self.top_ramp is not None and self.gd.pbc_c[2])
+        if self.ramp:
+            self.grad_u_vg = self.gd.empty(3)
 
     def update(self, atoms, density):
         if not self.effective_potential.update(atoms, density):
             return False
         u_g = self.effective_potential.u_g
         np.exp(u_g * self.minus_beta, out=self.g_g)
+        if self.ramp:
+            self.apply_top_ramp()
         if self.depends_on_el_density:
             self.del_g_del_n_g.fill(self.minus_beta)
             self.del_g_del_n_g *= self.g_g
@@ -295,6 +312,17 @@ class EffectivePotentialCavity(Cavity):
                 self.grad_g_vg[i]
             )
         return True
+
+    def apply_top_ramp(self):
+        """Multiply the cavity by m(z) and add -kT ln m to grad u."""
+        depth, width = (value / Bohr for value in self.top_ramp)
+        z_g = self.gd.get_grid_point_coordinates()[2]
+        x_g = (z_g - (self.gd.cell_cv[2, 2] - depth)) / width
+        self.g_g *= 0.5 * erfc(x_g)
+        # d(ln m)/dz, written with erfcx so that it is finite everywhere:
+        dlnm_g = -2 / (np.sqrt(np.pi) * width * erfcx(x_g))
+        self.grad_u_vg[:] = self.effective_potential.grad_u_vg
+        self.grad_u_vg[2] += dlnm_g / self.minus_beta
 
     def get_del_r_vg(self, atom_index, density):
         u = self.effective_potential
@@ -325,6 +353,8 @@ class EffectivePotentialCavity(Cavity):
     # --- BEGIN GradientSurface API ---
 
     def get_grad_inner(self):
+        if self.ramp:
+            return self.grad_u_vg
         return self.effective_potential.grad_u_vg
 
     def get_del_outer_del_inner(self):

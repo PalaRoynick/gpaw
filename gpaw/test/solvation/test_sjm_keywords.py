@@ -65,7 +65,7 @@ keys = {
     'max_reruns': 5,
     'grand_output': False,
     'jelliumregion': {'top': -2., 'bottom': -4., 'thickness': None,
-                      'fix_bottom': True},
+                      'fix_bottom': True, 'width': 0.2},
     'always_adjust': True,
     'slope': 5.0,
     'mixer': 1.0,

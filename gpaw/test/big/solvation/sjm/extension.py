@@ -191,7 +191,7 @@ def _extent(pot):
     """Actual z-extent of the jellium mask, in Angstrom."""
     mask_r = pot.charging.mask_r.gather(broadcast=True)
     z_z = mask_r.desc.xyz()[0, 0, :, 2] * Bohr
-    inside = mask_r.data.mean(axis=(0, 1)) > 0
+    inside = mask_r.data.mean(axis=(0, 1)) > 0.5
     return z_z[inside].min(), z_z[inside].max()
 
 

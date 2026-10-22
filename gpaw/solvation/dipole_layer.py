@@ -579,13 +579,16 @@ def _layer_region_problem(charge, charge_where, eps_min, eps_max,
         Largest relative spread of the dielectric, (eps_max - eps_min) /
         eps_min, allowed where the field is read.
     """
-    advice = ('Add vacuum below the slab, or move the layer down or '
-              'narrow it with Solvation(dipolelayer={"center": ..., '
-              '"width": ...}).')
     if charge > charge_tol:
         return (f'{charge:.1e} electrons of charge lie within '
                 f'{charge_where}, which the dipole layer occupies; the '
-                'dipole-layer correction will be inaccurate. ' + advice)
+                'dipole-layer correction will be inaccurate. Possible '
+                'causes: (1) atoms are too close to the layer; (2) a '
+                'counter charge, such as the SJM jellium, is too close to '
+                'the layer; (3) in plane-wave mode, your atoms or jellium '
+                'are "Gibbs ringing" into the dipole layer, which can be '
+                'caused by too low of a cutoff energy or too sharp of a '
+                'jellium edge.')
     if eps_max - eps_min > eps_tol * eps_min:
         return (f'The dielectric varies from {eps_min:.3f} to '
                 f'{eps_max:.3f} within {eps_where}, where the dipole-layer '

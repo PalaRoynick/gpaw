@@ -59,7 +59,8 @@ class SJM(ExtensionInput):
         water as in ``gpaw.solvation.get_HW14_water_kwargs()``, with its
         effective potential made an
         :class:`~gpaw.solvation.sjm.SJMPower12Potential`, which keeps the
-        solvent from behind the electrode.  Without a dipole layer it gets
+        solvent from behind the electrode, and (in PW mode) a ``top_ramp`` of
+        the solvent to vacuum at the cell top.  Without a dipole layer it gets
         ``GaussianDerivativeDipole(zero_vacuum=True)``, which puts the
         electrostatic potential to zero in the vacuum at the top of the cell.
         The electrode potential is read off that vacuum level, so a layer of
@@ -130,6 +131,7 @@ class SJM(ExtensionInput):
             u = water['cavity'].effective_potential
             water['cavity'].effective_potential = SJMPower12Potential(
                 u.atomic_radii, u.u0)
+            water['cavity'].top_ramp = (1.2, 0.25)  # Å: depth, width
         self.solvation = _from_dict(solvation, Solvation)
         if not self.solvation.dipolelayer:
             self.solvation.dipolelayer = GaussianDerivativeDipole(
