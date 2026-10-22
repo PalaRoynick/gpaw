@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
 from gpaw.core.matrix import Matrix
@@ -138,7 +137,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             # C_nM.data in order for us to be able to tell that the
             # data is uninitialized:
             if not isinstance(self.C_nM, Matrix):
-                raise RuntimeError('There are no projections or wavefunctions')
+                raise RuntimeError('Wave function collapse: no projections!')
 
             for a, P_Mi in self.P_aMi.items():
                 self._P_ani[a][:] = self.C_nM.data @ P_Mi
@@ -165,8 +164,8 @@ class LCAOWaveFunctions(WaveFunctions, XP):
 
     def calculate_density_matrix(self,
                                  *,
-                                 eigs=False,
-                                 transposed=False) -> np.ndarray:
+                                 eigs: bool = False,
+                                 transposed: bool = False) -> np.ndarray:
         """Calculate the density matrix.
 
         The density matrix is:::
@@ -180,22 +179,39 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         -------
         The density matrix in the LCAO basis
         """
-        if self.domain_comm.rank == 0:
-            f_n = self.weight * self.spin_degeneracy * self.myocc_n
-            if eigs:
-                f_n *= self.myeig_n
-            f_n = self.xp.asarray(f_n)
-            TempC_nM = self.C_nM.copy()
-            TempC_nM.data *= f_n[:, None]
-            rho_MM = TempC_nM.multiply(self.C_nM, opa='C')
-            if transposed:
-                rho_MM.complex_conjugate()
-            rho_MM_data = rho_MM.data
-        else:
-            rho_MM_data = np.empty_like(self.T_MM.data)
-        self.domain_comm.broadcast(rho_MM_data, 0)
-
-        return rho_MM_data
+        nbands, nbasis = self.C_nM.shape
+        D = self.domain_comm.size
+        dM = (nbasis + D - 1) // D
+        M1 = min(nbasis, self.domain_comm.rank * dM)
+        M2 = min(nbasis, (self.domain_comm.rank + 1) * dM)
+        C_nM = self.C_nM.new(
+            dist=(self.domain_band_comm,
+                  self.band_comm.size, self.domain_comm.size),
+            data=self.xp.ascontiguousarray(self.C_nM.data[:, M1:M2]))
+        rho_MM = self.T_MM.new(
+            dist=(self.domain_band_comm,
+                  self.band_comm.size, self.domain_comm.size))
+        f_n = self.weight * self.spin_degeneracy * self.myocc_n
+        if eigs:
+            f_n *= self.myeig_n
+        f_n = self.xp.asarray(f_n)
+        Cf_nM = C_nM.copy()
+        Cf_nM.data *= f_n[:, np.newaxis]
+        Cf_nM.multiply(C_nM, opa='C', out=rho_MM)
+        if transposed:
+            rho_MM.complex_conjugate()
+        if self.domain_comm.size > 1:
+            B = self.band_comm.size
+            dMB = (nbasis + B - 1) // B
+            rho2_MM = rho_MM.new(
+                dist=(self.domain_band_comm,
+                      self.band_comm.size, self.domain_comm.size,
+                      dMB, nbasis))
+            rho_MM.redist(rho2_MM)
+            rho_MM = self.T_MM.new(
+                data=rho2_MM.data if self.domain_comm.rank == 0 else None)
+            self.domain_comm.broadcast(rho_MM.data, 0)
+        return rho_MM.data
 
     def to_uniform_grid_wave_functions(self,
                                        grid,

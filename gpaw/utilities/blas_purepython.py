@@ -58,9 +58,13 @@ def r2k(alpha, a, b, beta, c, trans='c'):  # noqa
     np.fill_diagonal(c, c.diagonal().real)
 
 
-def mmm(alpha: T, a: np.ndarray, opa: str,  # noqa
-        b: np.ndarray, opb: str,
-        beta: T, c: np.ndarray) -> None:
+def mmm(alpha: T,
+        a: np.ndarray,
+        opa: str,  # noqa
+        b: np.ndarray,
+        opb: str,
+        beta: T,
+        c: np.ndarray) -> None:
     if beta == 0.0:
         c[:] = 0.0
     else:
