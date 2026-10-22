@@ -199,7 +199,7 @@ class DFTComponentsBuilder:
             params.parallel.get('distribute_density', True) and
             xcfunc.name not in {'QNA', 'TB09'} and
             self.communicators['d'].size < comm.size and
-            np.prod(size_c) / world.size >= 8**3)
+            np.prod(size_c) / comm.size >= 8**3)
 
         if self.distributed_density:
             self.communicators['x'] = comm
