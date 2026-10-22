@@ -128,7 +128,7 @@ def work(structure: str,
         convergence=dict(density=1e-6))
     if mode == 'pw':
         params['mode'] = dict(name='pw', ecut=1000)
-        params['nbands'] = -20,
+        params['nbands'] = -20
     else:
         params['mode'] = 'lcao'
         params['basis'] = 'dzp'
