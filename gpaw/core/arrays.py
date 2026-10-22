@@ -59,14 +59,14 @@ class XArray(Generic[DomainType], XP):
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
 
-        if self.dims:
+        if self.dims and comm.size > 1:
             mydims0 = (self.dims[0] + comm.size - 1) // comm.size
             d1 = min(comm.rank * mydims0, self.dims[0])
             d2 = min((comm.rank + 1) * mydims0, self.dims[0])
             mydims0 = d2 - d1
             self.mydims = (mydims0,) + self.dims[1:]
         else:
-            self.mydims = ()
+            self.mydims = self.dims
 
         fullshape = self.mydims + self.myshape
 
@@ -268,8 +268,8 @@ class XArray(Generic[DomainType], XP):
             M1 = self.matrix
             M2 = other.matrix
 
-            n = self.mydims[0]
-            m = other.mydims[0]
+            n = M1.shape[0]
+            m = M2.shape[0]
             X = M1.shape[1]
             assert M2.shape[1] == X
 
