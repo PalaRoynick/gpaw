@@ -7,6 +7,7 @@ from ase.units import Bohr
 import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.gpu import as_np, as_numpy, as_xp, cupy_is_fake
+from gpaw.lfc_tiles import TiledFunctions, tiles_available
 from gpaw.new import trace
 from gpaw.old.grid_descriptor import GridBoundsError, GridDescriptor
 from gpaw.utilities import smallest_safe_grid_spacing
@@ -1072,8 +1073,37 @@ class BasisFunctions(LocalizedFunctionsCollection):
         """
         rho_MM = as_np(rho_MM)
         with as_numpy(nt_G) as nt_G:
-            self.lfc.construct_density(
-                rho_MM, nt_G, q, self.Mstart, self.Mstop)
+            tiles = self._tiles()
+            if tiles is not None and not tiles.per_volume:
+                tiles.construct_density(rho_MM, nt_G)
+            elif tiles is not None and rho_MM.dtype == complex:
+                tiles.construct_density(rho_MM, nt_G, self.phase_qW[q])
+            else:
+                self.lfc.construct_density(
+                    rho_MM, nt_G, q, self.Mstart, self.Mstop)
+
+    def _tiles(self):
+        """Tiled basis functions for BLAS-3 kernels (or None).
+
+        Real gamma-point calculations use one column per basis function;
+        otherwise (k-points or complex wave functions) periodic images are
+        kept in separate columns so that Bloch phases can be applied.
+        Only used when this rank holds all rows of the matrices.
+        """
+        if not (self.Mstart == 0 and self.Mstop == self.Mmax and
+                tiles_available()):
+            return None
+        per_volume = not (self.gamma and self.dtype == float)
+        if getattr(self, '_tiles_lfc', None) is not self.lfc:
+            self._tiles_data = {}
+            self._tiles_lfc = self.lfc
+        tiles = self._tiles_data.get(per_volume)
+        if tiles is None:
+            tiles = TiledFunctions(
+                self.A_Wgm, self.M_W, self.G_B, self.W_B,
+                self.gd.n_c, self.Mmax, per_volume=per_volume)
+            self._tiles_data[per_volume] = tiles
+        return tiles
 
     def integrate2(self, a_xG, c_xM, q=-1):
         """Calculate integrals of arrays times localized functions.
@@ -1108,14 +1138,22 @@ class BasisFunctions(LocalizedFunctionsCollection):
         assert np.all(vt_G.shape == self.gd.n_c), (vt_G.shape, self.gd.n_c)
         if self.gamma and self.dtype == float:
             Vt_xMM = np.zeros((1, self.Mstop - self.Mstart, self.Mmax))
-            self.lfc.calculate_potential_matrix(vt_G, Vt_xMM[0], -1,
-                                                self.Mstart, self.Mstop)
+            tiles = self._tiles()
+            if tiles is not None:
+                tiles.potential_matrix(vt_G, self.gd.dv, Vt_xMM[0])
+            else:
+                self.lfc.calculate_potential_matrix(vt_G, Vt_xMM[0], -1,
+                                                    self.Mstart, self.Mstop)
         else:
             Vt_xMM = np.zeros((len(self.sdisp_xc),
                                self.Mstop - self.Mstart,
                                self.Mmax))
-            self.lfc.calculate_potential_matrices(vt_G, Vt_xMM, self.x_W,
-                                                  self.Mstart, self.Mstop)
+            tiles = self._tiles()
+            if tiles is not None:
+                tiles.potential_matrices(vt_G, self.gd.dv, self.x_W, Vt_xMM)
+            else:
+                self.lfc.calculate_potential_matrices(vt_G, Vt_xMM, self.x_W,
+                                                      self.Mstart, self.Mstop)
 
         return as_xp(Vt_xMM, self.xp)
 
@@ -1173,6 +1211,12 @@ class BasisFunctions(LocalizedFunctionsCollection):
 
         C_xM = C_xM.reshape((-1,) + C_xM.shape[-1:])
         psit_xG = psit_xG.reshape((-1,) + psit_xG.shape[-3:])
+
+        tiles = self._tiles()
+        if tiles is not None and psit_xG.flags.c_contiguous:
+            phase_W = None if self.gamma else self.phase_qW[q]
+            tiles.lcao_to_grid(C_xM, psit_xG, phase_W)
+            return
 
         if self.gamma or len(C_xM) == 1:
             for C_M, psit_G in zip(C_xM, psit_xG):
@@ -1238,20 +1282,36 @@ class BasisFunctions(LocalizedFunctionsCollection):
         gd = self.gd
         Mstart = self.Mstart
         Mstop = self.Mstop
-        F_vM = np.zeros((3, Mstop - Mstart))
         assert self.Mmax == rhoT_MM.shape[1]
         assert Mstop - Mstart == rhoT_MM.shape[0]
         assert rhoT_MM.flags.c_contiguous
-        for v in range(3):
-            self.lfc.calculate_potential_matrix_force_contribution(
-                vt_G, rhoT_MM, F_vM[v],
-                np.ascontiguousarray(gd.h_cv),
-                gd.n_c, q, v,
-                np.array(cspline_M),
-                gd.beg_c,
-                self.pos_Wv,
-                Mstart,
-                Mstop)
+        tiles = self._tiles()
+        lmax = max((spline.get_angular_momentum_number()
+                    for sphere in self.sphere_a
+                    for spline in sphere.spline_j), default=0)
+        if tiles is not None and tiles.per_volume:
+            if rhoT_MM.dtype != complex:
+                tiles = None
+            else:
+                phase_W = self.phase_qW[q]
+        else:
+            phase_W = None
+        if tiles is not None and lmax <= 4:
+            F_vM = tiles.force_contribution(
+                vt_G, gd.dv, rhoT_MM, np.array(cspline_M),
+                self.M_W, self.pos_Wv, gd.h_cv, gd.n_c, gd.beg_c, phase_W)
+        else:
+            F_vM = np.zeros((3, Mstop - Mstart))
+            for v in range(3):
+                self.lfc.calculate_potential_matrix_force_contribution(
+                    vt_G, rhoT_MM, F_vM[v],
+                    np.ascontiguousarray(gd.h_cv),
+                    gd.n_c, q, v,
+                    np.array(cspline_M),
+                    gd.beg_c,
+                    self.pos_Wv,
+                    Mstart,
+                    Mstop)
 
         F_av = np.zeros((len(self.M_a), 3))
         a = 0
