@@ -261,7 +261,6 @@ class XArray(Generic[DomainType], XP):
                          xp=self.xp)
 
         if comm.size == 1:
-            assert other.comm.size == 1
             if function:
                 assert symmetric
                 other = function(other)
@@ -269,8 +268,8 @@ class XArray(Generic[DomainType], XP):
             M1 = self.matrix
             M2 = other.matrix
 
-            n = M1.shape[0]
-            m = M2.shape[0]
+            n = self.mydims[0]
+            m = other.mydims[0]
             X = M1.shape[1]
             assert M2.shape[1] == X
 
