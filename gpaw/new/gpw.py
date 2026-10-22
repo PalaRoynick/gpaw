@@ -379,12 +379,12 @@ def read_dft_state(reader: ulm.Reader,
 
     if domain_complementary_comm.rank == 0:
         nt_sR.scatter_from(nt_sR_array)
-        if builder.xc.type == 'MGGA':
+        if taut_sR is not None:
             taut_sR.scatter_from(taut_sR_array)
         D_asp.scatter_from(D_sap_array)
     if kpt_band_comm.rank == 0:
         vt_sR.scatter_from(vt_sR_array)
-        if builder.xc.type == 'MGGA':
+        if dedtaut_sR is not None:
             dedtaut_sR.scatter_from(dedtaut_sR_array)
         dH_asp.scatter_from(dH_sap_array)
     if reader.version < 4:
@@ -393,7 +393,7 @@ def read_dft_state(reader: ulm.Reader,
 
     domain_complementary_comm.broadcast(nt_sR.data, 0)
     kpt_band_comm.broadcast(vt_sR.data, 0)
-    if builder.xc.type == 'MGGA':
+    if taut_sR is not None and dedtaut_sR is not None:
         domain_complementary_comm.broadcast(taut_sR.data, 0)
         kpt_band_comm.broadcast(dedtaut_sR.data, 0)
     domain_complementary_comm.broadcast(D_asp.data, 0)

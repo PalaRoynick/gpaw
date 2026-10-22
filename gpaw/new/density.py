@@ -24,7 +24,7 @@ class Density:
     @classmethod
     def from_data_and_setups(cls,
                              nt_sR: UGArray,
-                             taut_sR: UGArray,
+                             taut_sR: UGArray | None,
                              D_asii: AtomArrays,
                              charge: float,
                              setups: Setups,
