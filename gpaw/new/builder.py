@@ -202,7 +202,7 @@ class DFTComponentsBuilder:
             np.prod(size_c) / comm.size >= 8**3)
 
         if self.distributed_density:
-            self.communicators['x'] = comm
+            self.communicators['x'] = self.communicators['w']
             self.communicators['X'] = serial_comm
             log(f'Distributing density over all {comm.size} cores')
         else:
