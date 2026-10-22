@@ -1,3 +1,12 @@
+workflow:
+  rules:
+    # Don't create duplicate pipelines for a push to a branch that has an open MR
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    # Otherwise create the pipeline in all standard cases, including scheduled ones
+    - when: always
+
+
 variables:
   PYTHONUSERBASE: ".local"
   DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
