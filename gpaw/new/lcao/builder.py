@@ -51,8 +51,8 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
             self.builder.electrostatic_potential_desc)
         self.interpolation_desc = self.builder.interpolation_desc
 
-    def create_uniform_grids(self):
-        return self.builder.create_uniform_grids()
+    def calculate_number_of_grid_points(self):
+        return self.builder.calculate_number_of_grid_points()
 
     def create_potential_calculator(self):
         return self.builder.create_potential_calculator()

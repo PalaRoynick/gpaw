@@ -3,7 +3,7 @@ from time import time
 import numpy as np
 
 from gpaw.core import PWDesc, UGDesc
-from gpaw.core.atom_arrays import AtomArraysLayout, AtomDistribution
+from gpaw.core.atom_arrays import AtomArraysLayout
 from gpaw.mpi import world
 from gpaw.new.brillouin import MonkhorstPackKPoints
 from gpaw.new.pw.hybrids import Psit, PWHybridHamiltonian

@@ -58,7 +58,6 @@ class NonSelfConsistentHybridXCCalculator:
         from gpaw.hybrids import parse_name
         from gpaw.hybrids.paw import pawexxvv
         assert isinstance(ibzwfs, PWFDIBZWaveFunctions)
-        #assert not pot_calc.distributed_density
         semilocal_xc_name, self.exx_fraction, exx_omega, yukawa = \
             parse_name(xc)
         self.comm = ibzwfs.comm

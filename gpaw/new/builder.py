@@ -199,14 +199,17 @@ class DFTComponentsBuilder:
             self.communicators['d'].size < comm.size and
             np.prod(size_c) / world.size >= 8**3)
 
-        log(...)
         if self.distributed_density:
-            self.communicators['x'] = self.communicators['w']
+            self.communicators['x'] = comm
             self.communicators['X'] = serial_comm
-            zerobc = [False, False, False]
+            log(f'Distributing density over all {comm.size} cores')
         else:
             self.communicators['x'] = self.communicators['d']
             self.communicators['X'] = self.communicators['D']
+
+        if params.interpolation == 'fft' or self.mode == 'pw':
+            zerobc = [False, False, False]
+        else:
             zerobc = ~atoms.pbc
 
         self.grid = UGDesc(
@@ -248,7 +251,7 @@ class DFTComponentsBuilder:
     def nelectrons(self) -> float:
         return self.setups.nvalence - self.charge
 
-    def create_uniform_grids(self):
+    def calculate_number_of_grid_points(self) -> np.ndarray:
         raise NotImplementedError
 
     def check_cell(self, cell):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from gpaw.core import UGArray, UGDesc
-from gpaw.new.builder import create_uniform_grid
+from gpaw.new.builder import calc_gpts
 from gpaw.new.fd.hamiltonian import FDHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.gpw import as_double_precision
@@ -32,7 +32,7 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         self.interpolation_desc = self.fine_grid
 
     def calculate_number_of_grid_points(self):
-        gpts = calc_gpts(
+        return calc_gpts(
             self.mode,
             self.params.gpts,
             self.atoms.cell,
@@ -40,15 +40,6 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.ibz.symmetries,
             h=self.params.h,
             interpolation=self.interpolation_stencil_range)
-    if realspace:
-        zerobc = [not periodic for periodic in pbc]
-    else:
-        zerobc = [False] * 3
-    # return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)
-
-        fine_grid = grid.new(size=grid.size_c * 2)
-        # decomposition=[2 * d for d in grid.decomposition]
-        return grid, fine_grid
 
     def create_wf_description(self) -> UGDesc:
         return self.wf_grid.new(dtype=self.dtype)
