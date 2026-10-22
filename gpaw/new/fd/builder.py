@@ -12,6 +12,8 @@ from gpaw.transformers import RealSpaceGridTooSmallError
 
 
 class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
+    use_zero_bc = True
+
     def __init__(self,
                  atoms,
                  params,

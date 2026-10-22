@@ -44,6 +44,7 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
         finally:
             params.mode = mode
 
+        self.use_zero_bc = self.builder.use_zero_bc
         super().__init__(atoms, params, comm=comm, log=log)
         self.distribution = params.mode.distribution  # type: ignore
         self.basis = None

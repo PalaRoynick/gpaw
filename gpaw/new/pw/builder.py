@@ -25,6 +25,8 @@ from gpaw.typing import Array1D
 
 
 class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
+    use_zero_bc = False
+
     def __init__(self,
                  atoms,
                  params,

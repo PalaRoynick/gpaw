@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 
 
 class DFTComponentsBuilder:
+    use_zero_bc: bool
+
     def __init__(self,
                  atoms: Atoms,
                  params: Parameters,
@@ -207,10 +209,10 @@ class DFTComponentsBuilder:
             self.communicators['x'] = self.communicators['d']
             self.communicators['X'] = self.communicators['D']
 
-        if params.interpolation == 'fft' or self.mode == 'pw':
-            zerobc = [False, False, False]
-        else:
+        if self.use_zero_bc:
             zerobc = ~atoms.pbc
+        else:
+            zerobc = [False, False, False]
 
         self.grid = UGDesc(
             cell=atoms.cell / Bohr,
