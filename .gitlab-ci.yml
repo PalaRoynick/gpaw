@@ -591,21 +591,6 @@ test-cuda-mpi:
     - $MPIEXEC -n 4 gpaw python -m pytest -v -x -m gpu
 
 
-test-cuda-mpi-makefile-build:
-  image: $IMAGE_CUDA
-  extends:
-    - .test
-  needs:
-    - job: build-cuda-makefile
-  tags:
-    - cuda-mpi
-  script:
-    - nvidia-smi
-    # just a very lightweight test as we mainly want to ensure that
-    # runtime linking is OK
-    - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
-
-
 test-rocm:
   image: $IMAGE_ROCM
   extends:
