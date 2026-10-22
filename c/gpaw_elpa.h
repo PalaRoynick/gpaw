@@ -11,4 +11,4 @@ FIXME: should not be GPAW's responsibility to patch this!
 */
 CLINKAGE const char *elpa_strerr(int elpa_error);
 
-#include <elpa/elpa.h>
+#include <elpa/elpa.h>  // IWYU pragma: export

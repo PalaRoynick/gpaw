@@ -8,6 +8,8 @@
 #include "gpu.h"
 #include "gpu-complex.h"
 
+#include <cassert>
+#include <cstddef>
 
 gpublasHandle_t _gpaw_gpublas_handle;
 

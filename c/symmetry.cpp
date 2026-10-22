@@ -4,6 +4,10 @@
 #include "python_utils.h"
 #include "array.h"
 #include "extensions.h"
+#include <cstddef>
+#include <cmath>
+#include <cstdlib>
+#include <cassert>
 
 
 PyObject* GG_shuffle(PyObject *self, PyObject *args)

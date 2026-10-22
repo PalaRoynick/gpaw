@@ -1,5 +1,6 @@
 #include "python_utils.h"
 #include <stdbool.h>
+#include <cstddef>
 
 // In the code, one utilizes calls equvalent to PyArray API,
 // except instead of PyArray_BYTES one uses Array_BYTES.

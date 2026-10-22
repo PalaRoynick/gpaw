@@ -1,5 +1,7 @@
 #include "python_utils.h"
 #include "extensions.h"
+#include <cstddef>
+#include <cstdlib>
 
 int compare_doubles (const void *a, const void *b)
 {
@@ -22,33 +24,33 @@ PyObject* tetrahedron_weight(PyObject *self, PyObject *args)
   double f10, f20, f21, f30, f31, f32;
   double f01, f02, f12, f03, f13, f23;
   double omega;
-  
+
   if (!PyArg_ParseTuple(args, "OOiOOOO",
                         &epsilon_k, &allsimplices_sk, &K,
                         &simplices_s, &Win_w, &omega_w,
                         &vol_s))
     return NULL;
-  
+
   int nsimplex = PyArray_DIMS(simplices_s)[0];
-  int nw = PyArray_DIMS(omega_w)[0];    
+  int nw = PyArray_DIMS(omega_w)[0];
   double* e_k = (double*)PyArray_DATA(epsilon_k);
   double* o_w = (double*)PyArray_DATA(omega_w);
   double* W_w = (double*)PyArray_DATA(Win_w);
   long* s_s = (long*)PyArray_DATA(simplices_s);
   int* alls_sk = (int*)PyArray_DATA(allsimplices_sk);
   double* v_s = (double*)PyArray_DATA(vol_s);
-  
+
   double* et_k = GPAW_MALLOC(double, 4);
-  
+
   double gw = 0;
   double Iw = 0;
-  double delta = 0;  
+  double delta = 0;
   int relk = 0;
   double ek = 0;
-  
+
   for (int s = 0; s < nsimplex; s++) {
     relk = 0;
-    for (int k = 0; k < 4; k++) { 
+    for (int k = 0; k < 4; k++) {
       et_k[k] = e_k[alls_sk[s_s[s] * 4 + k]];
     }
     ek = e_k[K];
@@ -63,21 +65,21 @@ PyObject* tetrahedron_weight(PyObject *self, PyObject *args)
       Iw = 0;
       gw = 0;
       omega = o_w[w];
-      
+
       f10 = (omega - et_k[0]) / (et_k[1] - et_k[0]);
       f20 = (omega - et_k[0]) / (et_k[2] - et_k[0]);
       f21 = (omega - et_k[1]) / (et_k[2] - et_k[1]);
       f30 = (omega - et_k[0]) / (et_k[3] - et_k[0]);
       f31 = (omega - et_k[1]) / (et_k[3] - et_k[1]);
       f32 = (omega - et_k[2]) / (et_k[3] - et_k[2]);
-      
+
       f01 = 1 - f10;
       f02 = 1 - f20;
       f03 = 1 - f30;
       f12 = 1 - f21;
       f13 = 1 - f31;
       f23 = 1 - f32;
-      
+
       if (et_k[1] != et_k[0] && et_k[0] <= omega && omega <= et_k[1])
         {
           gw = 3 * f20 * f30 / (et_k[1] - et_k[0]);

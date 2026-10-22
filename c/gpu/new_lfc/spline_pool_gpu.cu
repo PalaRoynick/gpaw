@@ -1,6 +1,8 @@
 #include "spline_pool_gpu.cuh"
 #include "new_lfc/lfc_builder.hpp"
 #include "gpu/cpp/gpu_core.hpp"
+#include <stdexcept>
+#include <cstddef>
 
 SplinePoolGpu::SplinePoolGpu(const SplinePool& cpu_pool)
     : num(cpu_pool.num_splines()), h_splines(cpu_pool.num_splines())

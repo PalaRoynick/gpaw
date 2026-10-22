@@ -6,6 +6,7 @@
 
 #include "python_utils.h"
 #include <mutex>
+#include <cstddef>
 
 PyObject* flush_pending_decrefs(PyObject* self, PyObject* args)
 {

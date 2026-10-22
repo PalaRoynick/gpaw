@@ -12,7 +12,9 @@
 #include <structmember.h>
 #include "extensions.h"
 #include "mympi.h"
-#include <stdlib.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cassert>
 
 // BLACS
 #define BLOCK_CYCLIC_2D 1

@@ -4,6 +4,10 @@
 #include "gpaw_utils.h"
 #include "pyarray_utils.hpp"
 
+#include <cstdint>
+#include <cstddef>
+#include <vector>
+
 namespace gpaw
 {
 

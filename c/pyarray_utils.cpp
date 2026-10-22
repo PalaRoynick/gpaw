@@ -1,5 +1,8 @@
 #include "pyarray_utils.hpp"
 #include "utils.hpp"
+#include <cstddef>
+#include <cstdint>
+
 
 namespace gpaw
 {

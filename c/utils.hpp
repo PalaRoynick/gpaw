@@ -4,10 +4,12 @@
 
 #include <functional>
 #include <memory>
-#include <type_traits>
 #include <cstdint>
 #include <sstream>
 #include <unordered_map>
+#include <cstddef>
+#include <string>
+#include <cstdlib>
 
 namespace gpaw
 {

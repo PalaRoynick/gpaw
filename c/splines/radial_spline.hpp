@@ -4,6 +4,7 @@
 #include "bmgs/bmgs.h"
 #include <vector>
 #include <type_traits>
+#include <cstddef>
 
 namespace gpaw
 {
