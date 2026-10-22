@@ -239,7 +239,8 @@ class EffectivePotentialCavity(Cavity):
                                Multiplies the cavity by
                                0.5 * erfc((z - (L - depth)) / width), so
                                the solvent does not jump to vacuum at the
-                               periodic boundary.  Only if z is periodic.
+                               periodic boundary. Only if z is periodic, and
+                               not counted towards the surface area.
         """
         super().__init__(surface_calculator, volume_calculator)
         self.effective_potential = Potential.from_dict(effective_potential)
@@ -247,7 +248,7 @@ class EffectivePotentialCavity(Cavity):
         self.minus_beta = -1. / (kB * temperature / Hartree)
         self.top_ramp = top_ramp
         self.ramp = False
-        self.grad_u_vg = None
+        self.grad_u_ramped_vg = None
 
     def todict(self):
         return {
@@ -288,7 +289,7 @@ class EffectivePotentialCavity(Cavity):
         self.effective_potential.allocate()
         self.ramp = bool(self.top_ramp is not None and self.gd.pbc_c[2])
         if self.ramp:
-            self.grad_u_vg = self.gd.empty(3)
+            self.grad_u_ramped_vg = self.gd.empty(3)
 
     def update(self, atoms, density):
         if not self.effective_potential.update(atoms, density):
@@ -301,9 +302,11 @@ class EffectivePotentialCavity(Cavity):
             self.del_g_del_n_g.fill(self.minus_beta)
             self.del_g_del_n_g *= self.g_g
             self.del_g_del_n_g *= self.effective_potential.del_u_del_n_g
-        # This class supports the GradientSurface API,
-        # so we can use it for the gradient also
-        grad_inner_vg = self.get_grad_inner()
+        # This class supports the GradientSurface API, so we can use it
+        # for the gradient also -- plus the ramp's part, which the
+        # surface leaves out
+        grad_inner_vg = (self.grad_u_ramped_vg if self.ramp else
+                         self.get_grad_inner())
         del_outer_del_inner = self.get_del_outer_del_inner()
         for i in (0, 1, 2):
             np.multiply(
@@ -321,8 +324,8 @@ class EffectivePotentialCavity(Cavity):
         self.g_g *= 0.5 * erfc(x_g)
         # d(ln m)/dz, written with erfcx so that it is finite everywhere:
         dlnm_g = -2 / (np.sqrt(np.pi) * width * erfcx(x_g))
-        self.grad_u_vg[:] = self.effective_potential.grad_u_vg
-        self.grad_u_vg[2] += dlnm_g / self.minus_beta
+        self.grad_u_ramped_vg[:] = self.effective_potential.grad_u_vg
+        self.grad_u_ramped_vg[2] += dlnm_g / self.minus_beta
 
     def get_del_r_vg(self, atom_index, density):
         u = self.effective_potential
@@ -353,8 +356,6 @@ class EffectivePotentialCavity(Cavity):
     # --- BEGIN GradientSurface API ---
 
     def get_grad_inner(self):
-        if self.ramp:
-            return self.grad_u_vg
         return self.effective_potential.grad_u_vg
 
     def get_del_outer_del_inner(self):
