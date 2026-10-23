@@ -92,7 +92,7 @@ class PulayMixer(BaseMixer):
         for h, alpha in enumerate(alpha_h):
             nt_sX.data += alpha * self.Rc_hsX[h][0].data
 
-        self.metric(nt_sX, MRc_sX, order=0.5)
+        self.metric(nt_sX, MRc_sX)
         MRc_sX.data *= self.beta
         nt_sX.data[:] = 0
 
