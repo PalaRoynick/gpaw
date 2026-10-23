@@ -7,6 +7,8 @@ from gpaw.typing import ArrayND
 
 
 class BaseMetric:
+    weight = 1
+
     def __init__(self,
                  g_ss: ArrayND | None,
                  ncomponents: int,
@@ -83,7 +85,10 @@ class FFTMetric(BaseMetric):
         self.sigma = sigma
         super().__init__(g_ss, **kwargs)
         ekin_G = self.xp.asarray(self.pw.ekin_G)
-        self.w_G = (self.weight + ekin_G) / (self.sigma + ekin_G)
+        self.w_G = self.sigma / self.weight * \
+            (self.weight + ekin_G) / (self.sigma + ekin_G)
+        self.w_inv_G = \
+            (self.sigma + ekin_G) / (self.weight ** 0.5 + ekin_G) - 1
 
     def apply(self,
               w_G,
@@ -114,7 +119,10 @@ class FFTMetric(BaseMetric):
 
     def inv(self, n_sX: XArray,
             out: XArray | None = None) -> XArray:
-        return self.apply(w_G=(self.xp.min(self.w_G) / self.w_G)**0.5, n_sX=n_sX, out=out)
+        out = self.apply(w_G=self.w_inv_G, n_sX=n_sX, out=out)
+        out.data += n_sX.data
+        out.data *= self.weight ** 0.5
+        return out
 
     def __str__(self) -> str:
         base = f'Fourier metric: weight={self.weight}, sigma={self.sigma}'

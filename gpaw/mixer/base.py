@@ -75,6 +75,7 @@ class BaseMixer:
         self.histories = [self.density_history, ]
 
     def mix(self, density: Density) -> float:
+        self.density = density
         nt_sX = density.nt_sR
         D_asii = density.D_asii
 
@@ -91,7 +92,7 @@ class BaseMixer:
             nt2_sX = nt_sX
             D2_asii = D_asii
 
-        dnt = self._mix(nt2_sX, D2_asii, density)
+        dnt = self._mix(nt2_sX, D2_asii)
 
         if self.ncomponents == 2:
             nt_sX.data[0] = 0.5 * (nt2_sX.data[0] + nt2_sX.data[1])
@@ -101,10 +102,8 @@ class BaseMixer:
 
         return dnt
 
-    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
-        ntc_sX = self.add_compensation_charge(nt_sX, D_asii, density,
-                                              add_delta0=True)
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays) -> float:
+        ntc_sX = self.add_compensation_charge(nt_sX, D_asii, add_delta0=True)
         if self.density_history.nold == 0:
             self.density_history.add(ntc_sX)
             return np.inf
@@ -122,14 +121,24 @@ class BaseMixer:
         return dNt if self.xp == np else dNt.get()
 
     def calculate_residual(self, ntc_sX: XArray, prev_sX: XArray,
-                           res_sX: XArray) -> XArray:
+                           res_sX: XArray,
+                           R_asii: None | ArrayND = None) -> XArray:
         assert ntc_sX.data is not res_sX.data
         # We do density history first, in case res_sX is the same as
         # self.density_history[-1].
         res_sX.data[:] = -prev_sX.data
         res_sX.data += ntc_sX.data
-        # res_sX.data[:] = self.metric.inv(res_sX).data
-        return res_sX
+        dNt = self.calculate_charge_sloshing(res_sX)
+        # Precondition
+        if self.metric.weight != 1:
+            if R_asii is not None:
+                res_sX.data[:] = self.add_compensation_charge(
+                    res_sX, R_asii).data
+            res_sX.data[:] = self.metric.inv(res_sX).data
+            if R_asii is not None:
+                res_sX.data[:] = self.add_compensation_charge(
+                    res_sX, R_asii, scale=-1.0).data
+        return dNt
 
     def calculate_paw_residual(self,
                                D_asii: ArrayND,
@@ -142,9 +151,10 @@ class BaseMixer:
 
     def add_compensation_charge(self, n_sX: XArray,
                                 D_asii_data: AtomArrays | ArrayND,
-                                density: Density,
                                 out: XArray | None = None,
-                                add_delta0: bool = False) -> XArray:
+                                add_delta0: bool = False,
+                                *,
+                                scale: float = 1.0) -> XArray:
         # Prepare output array
         if out is None:
             out = n_sX.copy()
@@ -158,7 +168,7 @@ class BaseMixer:
 
         # Get compensation charge coefficients
         ccc_asL = AtomArraysLayout(
-            [delta_iiL.shape[2] for delta_iiL in density.delta_aiiL],
+            [delta_iiL.shape[2] for delta_iiL in self.density.delta_aiiL],
             atomdist=self.atom_layout.atomdist,
             xp=np).empty(self.ncomponents)
         # XXX: np -> self.xp once the GPU LFC kernels work
@@ -173,13 +183,13 @@ class BaseMixer:
         for a, D_sii in D_asii.items():
             Q_sL = self.xp.einsum('sij, ijL -> sL',
                                   D_sii.real,
-                                  density.delta_aiiL[a])
+                                  self.density.delta_aiiL[a])
             if add_delta0:
                 # Not important for mixing, and should never be done
                 # for residuals.
-                Q_sL[0][0] += density.delta0_a[a]
+                Q_sL[0][0] += self.density.delta0_a[a]
             # XXX: Needed since we do compensation on cpu
-            ccc_asL[a] = Q_sL if self.xp is np else Q_sL.get()
+            ccc_asL[a] = scale * (Q_sL if self.xp is np else Q_sL.get())
 
         # Add compensation charge to output
         if self.xp is not np:

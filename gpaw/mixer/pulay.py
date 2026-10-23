@@ -3,7 +3,6 @@ import numpy as np
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.mixer.base import BaseMixer, DensityHistory
-from gpaw.new.density import Density
 
 
 class PulayMixer(BaseMixer):
@@ -51,8 +50,7 @@ class PulayMixer(BaseMixer):
         self.H_hh = self.xp.empty(
             (self.nmaxold, self.nmaxold), dtype=float)
 
-    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays) -> float:
         # Step 1: Initialize
         nh = self.Rc_hsX.nold
         nold = self.nt_hsX.nold
@@ -61,11 +59,11 @@ class PulayMixer(BaseMixer):
             return np.inf
 
         R_sX, R_asii = self.R_hsX.next()
-        self.calculate_residual(nt_sX, self.nt_hsX[-1][0], R_sX)
         self.calculate_paw_residual(D_asii.data, self.nt_hsX[-1][1], R_asii)
+        self.calculate_residual(nt_sX, self.nt_hsX[-1][0], R_sX, R_asii)
 
         Rc_sX = self.Rc_hsX.next()
-        self.add_compensation_charge(R_sX, R_asii, density, out=Rc_sX)
+        self.add_compensation_charge(R_sX, R_asii, out=Rc_sX)
 
         # Step 2: Calculate the DIIS matrix
         MRc_sX = self.metric(Rc_sX)
