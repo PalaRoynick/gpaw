@@ -163,7 +163,7 @@ def run_restart_fixed_density(dtype, gpu):
     # When reading from GPW file, restore original calculation's dtype
     # The stored precision is just for storage efficiency
     expected_dtype = calc_dtype
-    calc_read = GPAW(gpw_file, txt=None)
+    calc_read = GPAW(gpw_file, txt=None, parallel={'gpu': gpu})
 
     assert calc_read.wfs.dtype == expected_dtype
 

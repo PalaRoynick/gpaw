@@ -450,7 +450,7 @@ static PyObject* moduleinit(void)
 #endif
 
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
-    PyObject_SetAttrString(m, "version", PyLong_FromLong(14));
+    PyObject_SetAttrString(m, "version", PyLong_FromLong(15));
 
     Py_INCREF(&LFCType);
     Py_INCREF(&OperatorType);

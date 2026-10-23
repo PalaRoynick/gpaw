@@ -449,19 +449,20 @@ def _taut(ibzwfs: IBZWaveFunctions, grid: UGDesc) -> UGArray | None:
         pw = psit_nG.desc
 
         pw1 = pw.new(comm=None)
-        psit1_G = pw1.empty()
+        psit_yG = pw1.empty(1)
         iGpsit1_G = pw1.empty()
         Gplusk1_Gv = pw1.reciprocal_vectors()
 
         occ_n = wfs.weight * wfs.spin_degeneracy * wfs.myocc_n
 
         (N,) = psit_nG.mydims
-        for n1 in range(0, N, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, N)
-            psit_nG[n1:n2].gather_all(psit1_G)
-            n = n1 + domain_comm.rank
-            if n >= N:
+        for n_x, psit_xG in psit_nG.fullshape_iter_by_dims(psit_yG):
+            # TODO: Vectorize me
+            if len(n_x) == 0:
+                # No data
                 continue
+            n = n_x[0]
+            psit1_G = psit_xG[0]
             f = occ_n[n]
             if f == 0.0:
                 continue

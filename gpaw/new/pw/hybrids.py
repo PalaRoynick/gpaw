@@ -209,7 +209,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                  kpt_comm,
                  band_comm,
                  comm):
-        super().__init__(grid, pw.dtype)
+        super().__init__(grid, pw.dtype, blocksize=1)
         self.pw = pw
         self.exx_fraction = xc.exx_fraction
         self.xc = xc
@@ -469,8 +469,8 @@ class PWHybridHamiltonian(PWHamiltonian):
         N2 = len(ut2_nR)
         Q_anL = ghat_aLG.layout.empty(N2)
         rhot2_nG = pw.empty(N2)
-        tmp_Q = self.plan.tmp_Q
-        tmp_R = self.plan.tmp_R
+        tmp_Q = self.plan.tmp_Q[0]
+        tmp_R = self.plan.tmp_R[0]
         eikR_a = ghat_aLG._lfc.eikR_a
         pw2 = Htpsit2_nG.desc
         NR = tmp_R.size
@@ -522,7 +522,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                 mmm(1.0, rhot2_nG.data, 'N', ghat_GA, 'N', 0.0, Q_anL.data)
             x = self.exx_fraction * f1 / self.nbzk
             for rhot_G, Htpsit2_G in zip(rhot2_nG.data, Htpsit2_nG.data):
-                self.plan.ifft_sphere(rhot_G, pw)
+                self.plan.ifft_sphere(rhot_G[None], pw)
                 tmp_R *= ut1_R.data
                 self.plan.fft()
                 # Htpsit2_G -= x / NR * pw2.cut(tmp_Q)

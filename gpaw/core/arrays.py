@@ -11,8 +11,7 @@ from gpaw.core.domain import Domain
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import XP
 from gpaw.mpi import MPIComm
-from gpaw.new import trace
-from gpaw.typing import Array1D, ArrayND, Self
+from gpaw.typing import Array1D, ArrayND, Self, Any
 
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
@@ -59,14 +58,14 @@ class XArray(Generic[DomainType], XP):
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
 
-        if self.dims:
+        if self.dims and comm.size > 1:
             mydims0 = (self.dims[0] + comm.size - 1) // comm.size
             d1 = min(comm.rank * mydims0, self.dims[0])
             d2 = min((comm.rank + 1) * mydims0, self.dims[0])
             mydims0 = d2 - d1
             self.mydims = (mydims0,) + self.dims[1:]
         else:
-            self.mydims = ()
+            self.mydims = self.dims
 
         fullshape = self.mydims + self.myshape
 
@@ -91,6 +90,7 @@ class XArray(Generic[DomainType], XP):
             xp = cp
         super().__init__(xp)
         self._matrix: Matrix | None = None
+        self._a2a_stuff: dict[int, tuple[Any, ...]] = {}
 
     def new(self, data=None, dims=None) -> XArray:
         raise NotImplementedError
@@ -131,6 +131,64 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
+    def fullshape_iter_by_dims(self, buffer_mX, out_nX=None):
+        nm = buffer_mX.mydims[0]
+        b = self.mydims[0]
+        comm = self.desc.comm
+        if comm.size == 1:
+            # Fast serial implementation
+            if out_nX is not None:  # We use out as the buffer
+                out_nX.data[:] = self.data
+                buffer_mX = out_nX[:nm]
+
+            for m, start in enumerate(range(0, b, comm.size * nm)):
+                end = min(start + comm.size * nm, b)
+                mybands = np.arange(start, end)
+                buffer_aX = buffer_mX[:len(mybands)]
+                if out_nX is not None:  # We use out as the buffer
+                    buffer_aX.data = out_nX.data[start:end]
+                else:
+                    buffer_aX.data[:] = self.data[start:end]
+                yield mybands, buffer_aX
+            return
+
+        if out_nX is not None:
+            assert out_nX.myshape == self.myshape
+            assert out_nX.desc is self.desc
+
+        buffer_data = buffer_mX.data
+        extra = prod(self.mydims[1:])
+        assert extra == prod(buffer_mX.mydims[1:])
+        if extra > 1:
+            raise NotImplementedError('TODO, but currently not needed.')
+        for m, start in enumerate(range(0, b, comm.size * nm)):
+            end = min(start + comm.size * nm, b)
+            in_data = self.data[start:end]
+            max_offset = min(nm, (b - start + comm.size - 1) // comm.size)
+
+            for offset_index in range(0, max_offset):
+                tmp = in_data[
+                    offset_index * comm.size:(offset_index + 1) * comm.size]
+                ssize_r, soffset_r, rsize_r, roffset_r = \
+                    self.a2a_stuff(tmp.shape[0])
+                comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
+                               buffer_data[offset_index], rsize_r, roffset_r)
+
+            mybands = np.arange(start + comm.rank, end, comm.size)
+            yield mybands, buffer_mX[:len(mybands)]
+
+            if out_nX is None:
+                continue
+
+            out_data = out_nX.data[start:end]
+            for offset_index in range(0, max_offset):
+                tmp = out_data[
+                    offset_index * comm.size:(offset_index + 1) * comm.size]
+                ssize_r, soffset_r, rsize_r, roffset_r = \
+                    self.a2a_stuff(tmp.shape[0])
+                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
+                               tmp.ravel(), ssize_r, soffset_r)
+
     def sanity_check(self) -> None:
         """Sanity check."""
         pass
@@ -149,11 +207,12 @@ class XArray(Generic[DomainType], XP):
             yield self[index]
 
     def flat(self) -> Self:
-        if self.dims == ():
-            yield self
+        if len(self.dims) == 1:
+            return self
         else:
-            for index in np.indices(self.dims).reshape((len(self.dims), -1)).T:
-                yield self[tuple(index)]
+            return self.new(
+                data=self.data.reshape((prod(self.dims), *self.myshape)),
+                dims=(prod(self.dims)))
 
     def to_xp(self, xp):
         if xp is self.xp:
@@ -179,7 +238,6 @@ class XArray(Generic[DomainType], XP):
 
         return self._matrix
 
-    @trace
     def matrix_elements(self,
                         other: Self,
                         *,
@@ -200,7 +258,6 @@ class XArray(Generic[DomainType], XP):
                          xp=self.xp)
 
         if comm.size == 1:
-            assert other.comm.size == 1
             if function:
                 assert symmetric
                 other = function(other)
@@ -360,6 +417,30 @@ class XArray(Generic[DomainType], XP):
 
     def trace_inner_product(self, other: Self) -> float:
         raise NotImplementedError
+
+    def a2a_stuff(self, N):
+        """Create arrays for MPI alltoallv call."""
+        info = self._a2a_stuff.get(N)
+        if info is not None:
+            return info
+
+        comm = self.desc.comm
+        ng = self.desc.shape[0]
+        myng = self.desc.myshape[0]
+        maxmyng = self.desc.maxmysize
+
+        ssize_r = np.zeros(comm.size, int)
+        ssize_r[:N] = myng
+        soffset_r = np.arange(comm.size) * myng
+        soffset_r[N:] = 0
+        roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
+        rsize_r = np.zeros(comm.size, int)
+        if comm.rank < N:
+            rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
+            rsize_r[-1] = ng - roffset_r[-1]
+        info = (ssize_r, soffset_r, rsize_r, roffset_r)
+        self._a2a_stuff[N] = info
+        return info
 
 
 def _parallel_me(psit1_nX: XArray,

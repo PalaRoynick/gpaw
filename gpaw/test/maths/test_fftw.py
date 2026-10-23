@@ -1,47 +1,46 @@
 import time
+import numpy as np
 
 import pytest
 
 import gpaw.fftw as fftw
 
-N = 1
+N = 16
+blocksize = 2
 # n1, n2, n3 = 32, 28, 128
 n1, n2, n3 = 8, 6, 12
 
 
-def check(Plan, flags, input, output, sign):
+def check(Plans, flags, dtype):
     t0 = time.time()
-    plan = Plan(input, output, sign, flags)
+    if flags != 1337:
+        tmp = Plans._overwrite_flags
+        Plans._overwrite_flags = flags  # Hack to avoid the test overwrite
+    plan = Plans((n1, n2, n3), dtype=dtype, blocksize=blocksize)
+    if flags != 1337:
+        Plans._overwrite_flags = tmp  # Restore the value
     t1 = time.time()
     t = 0.0
     for i in range(N):
-        input[:] = 1.3
+        plan.tmp_R[:] = 1.3
         t2 = time.time()
-        plan.execute()
+        plan.fft()
+        plan.ifft()
         t3 = time.time()
         t += t3 - t2
-    return t1 - t0, t / N
+    return t1 - t0, t
 
 
 @pytest.mark.skipif(not fftw.have_fftw(), reason='No FFTW')
-def test_fft():
-    a1 = fftw.empty((n1, n2, n3), complex)
-    a2 = fftw.empty((n1, n2, n3), complex)
-    b = fftw.empty((n1, n2, n3 // 2 + 1), complex)
-    c1 = b.view(dtype=float)[:, :, :n3]
-    c2 = fftw.empty((n1, n2, n3 // 2), complex).view(dtype=float)
-    for input, output, sign in [
-        (a1, a1, -1),
-        (a1, a2, -1),
-        (b, c1, 1),
-        (b, c2, 1),
-        (c1, b, -1),
-        (c2, b, -1)]:
-        for Plan, flags in [(fftw.NumpyFFTPlan, 117),
-                            (fftw.FFTWPlan, fftw.ESTIMATE),
-                            (fftw.FFTWPlan, fftw.MEASURE),
-                            (fftw.FFTWPlan, fftw.PATIENT),
-                            (fftw.FFTWPlan, fftw.EXHAUSTIVE)]:
-            tplan, tfft = check(Plan, flags, input, output, sign)
-            print('%-12s %3d %10.6f %10.6f' %
-                  (Plan.__name__, flags, tplan, tfft))
+@pytest.mark.parametrize('dtype', [np.float64, np.complex128])
+@pytest.mark.parametrize('plan_info', [(fftw.NumpyFFTPlans, 1337),
+                                       (fftw.FFTWPlans, fftw.ESTIMATE),
+                                       (fftw.FFTWPlans, fftw.MEASURE),
+                                       (fftw.FFTWPlans, fftw.PATIENT),
+                                       (fftw.FFTWPlans, fftw.EXHAUSTIVE)])
+def test_fft(plan_info, dtype):
+    Plans = plan_info[0]
+    flags = plan_info[1]
+    tplan, tfft = check(Plans, flags, dtype)
+    print('%-12s %3d %10.6f %10.6f' %
+          (Plans.__name__, flags, tplan, tfft))

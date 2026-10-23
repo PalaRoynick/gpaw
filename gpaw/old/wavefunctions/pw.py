@@ -288,7 +288,7 @@ class PWWaveFunctions(FDPWWaveFunctions):
             if psit_G is not None:
                 psit_R = self.pd.ifft(psit_G, kpt.q, local=True, safe=False)
                 psit_R *= vt_R
-                self.pd.fftplan.execute()
+                self.pd.fftplans.fft()
                 vtpsit_G = self.pd.tmp_Q.ravel()[Q_G]
             else:
                 vtpsit_G = self.pd.tmp_G
@@ -453,7 +453,7 @@ class PWWaveFunctions(FDPWWaveFunctions):
                 if Gpsit_G is not None:
                     a_R = self.pd.ifft(Gpsit_G, kpt.q, local=True, safe=False)
                     a_R *= dedtaut_R
-                    self.pd.fftplan.execute()
+                    self.pd.fftplans.fft()
                     a_R = self.pd.tmp_Q.ravel()[Q_G]
                 else:
                     a_R = self.pd.tmp_G
