@@ -98,32 +98,31 @@ class MSR1Mixer(BaseMixer):
         self.pk_1sX = self.desc.empty((1, self.ncomponents), xp=self.xp)
         self.last_dNt = np.inf
 
-    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays) -> float:
         # Step 1: Initialize
         nold = self.nt_hsX.nold
         if nold == 0:
             self.nt_hsX.add(nt_sX, D_asii)
-            self.add_compensation_charge(nt_sX, D_asii, density,
+            self.add_compensation_charge(nt_sX, D_asii,
                                          out=self.ntc_hsX.next(),
                                          add_delta0=True)
             return np.inf
 
         _R_sX, _R_asii = self.R_hsX.next()
-        self.calculate_residual(nt_sX, self.nt_hsX[-1][0], _R_sX)
-        self.calculate_paw_residual(D_asii.data, self.nt_hsX[-1][1], _R_asii)
+        Rc_sX = self.Rc_hsX.next()
 
-        self.add_compensation_charge(_R_sX, _R_asii, density,
-                                     out=self.Rc_hsX.next())
+        ntc_sX = self.add_compensation_charge(nt_sX, D_asii, add_delta0=True)
+        dNt = self.calculate_residual(ntc_sX, self.ntc_hsX[-1][0], Rc_sX)
+        self.calculate_paw_residual(D_asii.data, self.nt_hsX[-1][1], _R_asii)
+        self.add_compensation_charge(Rc_sX, _R_asii, out=_R_sX, scale=-1)
 
         self.metric(self.Rc_hsX[-1], out=self.MRc_hsX.next())
 
         # Step 2: Do a pratt-step if nold <= 1, else discard bad steps
         if nold <= 1:
-            return self.pratt_step(nt_sX, D_asii, density)
+            return self.pratt_step(nt_sX, D_asii)
 
         Rc_last_sX = self.Rc_hsX[-2]
-        dNt = self.calculate_charge_sloshing(self.Rc_hsX[-1])
         increased_error = dNt / self.last_dNt
         ret_dNt = dNt
         if increased_error > self.soft_lim:
@@ -297,7 +296,7 @@ class MSR1Mixer(BaseMixer):
             for hist in self.histories:
                 hist.delete_oldest()
         self.nt_hsX.add(nt_sX, D_asii)
-        self.add_compensation_charge(nt_sX, D_asii, density,
+        self.add_compensation_charge(nt_sX, D_asii,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)
 
@@ -398,15 +397,14 @@ class MSR1Mixer(BaseMixer):
         self.world.broadcast(good_broydenness, 0)
         return good_broydenness
 
-    def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
-                   density: Density) -> float:
+    def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays) -> float:
         nt_sX.data[:] = self.nt_hsX[-1][0].data
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
         D_asii.data += self.beta * self.R_hsX[-1][1]
 
         self.nt_hsX.add(nt_sX, D_asii)
-        self.add_compensation_charge(nt_sX, D_asii, density,
+        self.add_compensation_charge(nt_sX, D_asii,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)
         self.uk_1sX.data[:] = self.Rc_hsX[-1].data

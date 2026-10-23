@@ -7,6 +7,8 @@ from gpaw.typing import ArrayND
 
 
 class BaseMetric:
+    weight = 1
+
     def __init__(self,
                  g_ss: ArrayND | None,
                  ncomponents: int,
@@ -82,16 +84,18 @@ class FFTMetric(BaseMetric):
         self.weight = weight
         self.sigma = sigma
         super().__init__(g_ss, **kwargs)
+        ekin_G = self.xp.asarray(self.pw.ekin_G)
+        self.w_G = self.sigma / self.weight * \
+            (self.weight + ekin_G) / (self.sigma + ekin_G)
 
-    def __call__(self, n_sX: XArray,
-                 out: XArray | None = None) -> XArray:
+    def apply(self,
+              w_G,
+              n_sX: XArray,
+              out: XArray | None = None) -> XArray:
         if out is None:
             out = n_sX.new()
         # We will now assume that the density is represented
         # in real space. This may change in the future.
-
-        ekin_G = self.xp.asarray(self.pw.ekin_G)
-        w_G = (self.weight + ekin_G) / (self.sigma + ekin_G)
 
         assert isinstance(n_sX, UGArray)
 
@@ -105,6 +109,17 @@ class FFTMetric(BaseMetric):
 
         out.matrix.data[:] = self.g_ss @ out.matrix.data
 
+        return out
+
+    def __call__(self, n_sX: XArray,
+                 out: XArray | None = None) -> XArray:
+        return self.apply(w_G=self.w_G, n_sX=n_sX, out=out)
+
+    def inv(self, n_sX: XArray,
+            out: XArray | None = None) -> XArray:
+        out = self.apply(w_G=self.w_G, n_sX=n_sX, out=out)
+        out.data[0] *= -1
+        out.data[0] += n_sX.data[0]
         return out
 
     def __str__(self) -> str:
