@@ -163,8 +163,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                 V_aL,
                 e_stress)
 
-    def move(self, relpos_ac, atomdist):
-        super().move(relpos_ac, atomdist)
+    def move(self, relpos_ac, atomdist, wf_atomdist):
+        super().move(relpos_ac, atomdist, wf_atomdist)
         self.poisson_solver.move(relpos_ac, atomdist)
         self.vbar_ag.move(relpos_ac, atomdist)
         self.vbar_g.data[:] = 0.0

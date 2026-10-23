@@ -219,7 +219,7 @@ class DFT:
         else:
             wf_atomdist = atomdist
 
-        self.pot_calc.move(self.relpos_ac, atomdist)
+        self.pot_calc.move(self.relpos_ac, atomdist, wf_atomdist)
         self.ibzwfs.move(self.relpos_ac, wf_atomdist)
         self.density.move(self.relpos_ac, atomdist)
         if self.ibzwfs.has_wave_functions():
