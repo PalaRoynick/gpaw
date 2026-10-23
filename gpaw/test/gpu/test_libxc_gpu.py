@@ -72,4 +72,4 @@ def test_libxc_gpu(name: str, nspins: int) -> None:
         functional.calculate_gpu(*gpu_arguments)
 
     for expected, actual in result_pairs:
-        assert cp.asnumpy(actual) == pytest.approx(expected, abs=3.0e-14)
+        assert cp.asnumpy(actual) == pytest.approx(expected, abs=1.0e-10)

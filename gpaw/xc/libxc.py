@@ -31,6 +31,19 @@ short_names = {
     'SCAN': 'MGGA_X_SCAN+MGGA_C_SCAN'}
 
 
+def _to_libxc_layout(array_sg):
+    """Libxc wants spin as the last index. This converts a GPAW '_sg'/'_xg'
+    array to Libxc layout as a C-contiguous copy."""
+    nchannels = array_sg.shape[0]
+    return cp.ascontiguousarray(array_sg.reshape(nchannels, -1).T)
+
+
+def _from_libxc_layout(array_gs, shape):
+    """Converts 'array_gs' back to GPAW layout 'array_sg'."""
+    nchannels = array_gs.shape[-1]
+    return array_gs.T.reshape((nchannels,) + shape)
+
+
 class LibXC(XCKernel):
     """Functionals from libxc."""
     def __init__(self, name, provides_laplacian=False, disable_fhc=True):
@@ -135,16 +148,20 @@ class LibXC(XCKernel):
 
         device_xc = self.get_device_functional()
 
+        n_gs = _to_libxc_layout(n_sg)
+        sigma_gx = None if sigma_xg is None else _to_libxc_layout(sigma_xg)
+        tau_gs = None if tau_sg is None else _to_libxc_layout(tau_sg)
+
         # Accumulate results over each functional type. Scratch space for
         # holding individual results:
         e_g_scratch = cp.empty_like(e_g)
-        dedn_sg_scratch = cp.empty_like(dedn_sg)
+        dedn_gs_scratch = cp.empty_like(n_gs)
         # Derivatives are technically optional for libxc but here we always
         # pass de/dn. Hence, must always pass other first derivatives too.
-        dedsigma_xg_scratch = (
-            None if sigma_xg is None else cp.empty_like(sigma_xg))
-        dedtau_sg_scratch = (
-            None if tau_sg is None else cp.empty_like(tau_sg))
+        dedsigma_gx_scratch = (
+            None if sigma_gx is None else cp.empty_like(sigma_gx))
+        dedtau_gs_scratch = (
+            None if tau_gs is None else cp.empty_like(tau_gs))
 
         density_g_total = n_sg.sum(axis=0)
 
@@ -153,29 +170,32 @@ class LibXC(XCKernel):
                 device_xc,
                 index,
                 npoints,
-                n_sg,
+                n_gs,
                 e_g_scratch,
-                dedn_sg_scratch,
-                sigma_xg,
-                dedsigma_xg_scratch,
-                tau_sg,
-                dedtau_sg_scratch)
+                dedn_gs_scratch,
+                sigma_gx,
+                dedsigma_gx_scratch,
+                tau_gs,
+                dedtau_gs_scratch)
 
             # Accumulate
             if index == 0:
                 # Our e_g is energy density, libxc returns energy per particle
                 e_g[:] = density_g_total * e_g_scratch
                 if dedsigma_xg is not None:
-                    dedsigma_xg[:] = dedsigma_xg_scratch
+                    dedsigma_xg[:] = _from_libxc_layout(
+                        dedsigma_gx_scratch, shape)
                 if dedtau_sg is not None:
-                    dedtau_sg[:] = dedtau_sg_scratch
+                    dedtau_sg[:] = _from_libxc_layout(dedtau_gs_scratch, shape)
             else:
                 e_g += density_g_total * e_g_scratch
                 if dedsigma_xg is not None:
-                    dedsigma_xg += dedsigma_xg_scratch
+                    dedsigma_xg += _from_libxc_layout(
+                        dedsigma_gx_scratch, shape)
                 if dedtau_sg is not None:
-                    dedtau_sg += dedtau_sg_scratch
-            dedn_sg += dedn_sg_scratch
+                    dedtau_sg += _from_libxc_layout(dedtau_gs_scratch, shape)
+
+            dedn_sg += _from_libxc_layout(dedn_gs_scratch, shape)
 
     def set_omega(self, omega=None):
         """Set the value of gamma/omega in RSF."""

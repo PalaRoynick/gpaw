@@ -25,21 +25,32 @@ static lxcXCFunctionalObject& unwrap_lxc_functional(py::handle obj)
     return *reinterpret_cast<lxcXCFunctionalObject*>(ptr);
 }
 
+/** Throws if `array` is not C-contiguous. */
+static void require_contiguous(const PyDeviceArray& array, const char* name)
+{
+    if (!array.is_c_contiguous())
+    {
+        throw std::invalid_argument(std::string(name) + " must be C-contiguous");
+    }
+}
+
 /** Evaluates the energy and its first derivative for an lxcXCFunctionalObject on GPU.
-* The non-const arrays are all output arguments. num_points should be the (domain-local) grid size,
-* ie. size of the second dimension in arrays like rho_sg.
+* The non-const arrays are all output arguments. num_points should be the (domain-local) number
+* of grid points.
+*
+* All arrays must be in Libxc's layout: spin index is the trailing/fastest axis.
 */
 static void evaluate_lxcfunctional_device(
     py::handle lxc_functional,
     int32_t functional_index,
     size_t num_points,
-    const PyDeviceArray& n_sg,                              // density
-    PyDeviceArray& e_g,                                     // energy
-    PyDeviceArray& dedn_sg,                                 // derivative: de/dn
-    const std::optional<PyDeviceArray>& sigma_xg,
-    std::optional<PyDeviceArray>& dedsigma_xg,              // derivative: de/dsigma
-    const std::optional<PyDeviceArray>& tau_sg,
-    std::optional<PyDeviceArray>& dedtau_sg)                // derivative: de/dtau
+    const PyDeviceArray& n_gs,                              // density
+    PyDeviceArray& e_g,                                     // energy (NOT energy density)
+    PyDeviceArray& dedn_gs,                                 // derivative: de/dn
+    const std::optional<PyDeviceArray>& sigma_gx,
+    std::optional<PyDeviceArray>& dedsigma_gx,              // derivative: de/dsigma
+    const std::optional<PyDeviceArray>& tau_gs,
+    std::optional<PyDeviceArray>& dedtau_gs)                // derivative: de/dtau
 {
     const lxcXCFunctionalObject& xc = unwrap_lxc_functional(lxc_functional);
 
@@ -53,6 +64,14 @@ static void evaluate_lxcfunctional_device(
             std::string("Libxc functional index out of range (should be 0 or 1): ") + std::to_string(functional_index));
     }
 
+    require_contiguous(n_gs, "n_gs");
+    require_contiguous(e_g, "e_g");
+    require_contiguous(dedn_gs, "dedn_gs");
+    if (sigma_gx.has_value()) require_contiguous(sigma_gx.value(), "sigma_gx");
+    if (dedsigma_gx.has_value()) require_contiguous(dedsigma_gx.value(), "dedsigma_gx");
+    if (tau_gs.has_value()) require_contiguous(tau_gs.value(), "tau_gs");
+    if (dedtau_gs.has_value()) require_contiguous(dedtau_gs.value(), "dedtau_gs");
+
     const auto functional = xc.functional[functional_index];
 
     switch (functional->info->family)
@@ -61,20 +80,20 @@ static void evaluate_lxcfunctional_device(
 #ifdef XC_FAMILY_HYB_LDA
     case XC_FAMILY_HYB_LDA:
 #endif
-        xc_lda_exc_vxc(functional, num_points, n_sg.data<double>(), e_g.data<double>(), dedn_sg.data<double>());
+        xc_lda_exc_vxc(functional, num_points, n_gs.data<double>(), e_g.data<double>(), dedn_gs.data<double>());
         break;
     case XC_FAMILY_GGA:
     case XC_FAMILY_HYB_GGA:
     {
-        // Libxc allows nullptr for derivatives, however we always pass dedn_sg and it seems that
+        // Libxc allows nullptr for derivatives, however we always pass dedn_gs and it seems that
         // this necessitates other first derivatives are passed too.
-        if (!sigma_xg.has_value() || !dedsigma_xg.has_value())
+        if (!sigma_gx.has_value() || !dedsigma_gx.has_value())
         {
-            throw std::runtime_error("sigma_xg and dedsigma_xg must be provided for this functional");
+            throw std::runtime_error("sigma_gx and dedsigma_gx must be provided for this functional");
         }
 
-        xc_gga_exc_vxc(functional, num_points, n_sg.data<double>(), sigma_xg.value().data<double>(), e_g.data<double>(),
-            dedn_sg.data<double>(), dedsigma_xg.value().data<double>());
+        xc_gga_exc_vxc(functional, num_points, n_gs.data<double>(), sigma_gx.value().data<double>(), e_g.data<double>(),
+            dedn_gs.data<double>(), dedsigma_gx.value().data<double>());
         break;
     }
     case XC_FAMILY_MGGA:
@@ -86,16 +105,14 @@ static void evaluate_lxcfunctional_device(
         // More explicit check is on Python side
         assert((functional->info->flags & XC_FLAGS_NEEDS_LAPLACIAN) == 0);
 
-        if (!sigma_xg.has_value() || !tau_sg.has_value() || !dedsigma_xg.has_value() || !dedtau_sg.has_value())
+        if (!sigma_gx.has_value() || !tau_gs.has_value() || !dedsigma_gx.has_value() || !dedtau_gs.has_value())
         {
-            throw std::runtime_error("sigma_xg and tau_sg, and respective derivatives, must be provided for this functional");
+            throw std::runtime_error("sigma_gx and tau_gs, and respective derivatives, must be provided for this functional");
         }
-        require_matching_derivative(sigma_xg.has_value(), dedsigma_xg.has_value(), "sigma_xg", "dedsigma_xg");
-        require_matching_derivative(tau_sg.has_value(), dedtau_sg.has_value(), "tau_sg", "dedtau_sg");
 
-        xc_mgga_exc_vxc(functional, num_points, n_sg.data<double>(), sigma_xg.value().data<double>(), lapl, tau_sg.value().data<double>(),
-            e_g.data<double>(), dedn_sg.data<double>(), dedsigma_xg.value().data<double>(),
-            lapl_derivative, dedtau_sg.value().data<double>());
+        xc_mgga_exc_vxc(functional, num_points, n_gs.data<double>(), sigma_gx.value().data<double>(), lapl, tau_gs.value().data<double>(),
+            e_g.data<double>(), dedn_gs.data<double>(), dedsigma_gx.value().data<double>(),
+            lapl_derivative, dedtau_gs.value().data<double>());
         break;
     }
     default:
@@ -124,10 +141,12 @@ void bind_libxc_extras(PyObject *module)
 
     m.def("evaluate_lxcfunctional_device", &evaluate_lxcfunctional_device,
         py::arg("lxc_functional"), py::arg("functional_index"), py::arg("num_points"),
-        py::arg("n_sg"), py::arg("e_g"), py::arg("dedn_sg"), py::arg("sigma_xg"),
-        py::arg("dedsigma_xg"), py::arg("tau_sg"), py::arg("dedtau_sg"),
+        py::arg("n_gs"), py::arg("e_g"), py::arg("dedn_gs"), py::arg("sigma_gx"),
+        py::arg("dedsigma_gx"), py::arg("tau_gs"), py::arg("dedtau_gs"),
         py::doc(
             "Evaluates the energy density and its first derivative for a Libxc functional on GPU. "
-            "All input/output arrays must be float64-valued and the Libxc functional object must have been initialized on the GPU."));
+            "All input/output arrays must be float64-valued, C-contiguous, and in Libxc's "
+            "layout: spin index is the trailing/fastest axis. GPAW tends to use the opposite indexing "
+            "so you likely need a conversion on Python side"));
 
 }
