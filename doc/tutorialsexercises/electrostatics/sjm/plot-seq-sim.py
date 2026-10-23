@@ -21,19 +21,39 @@ def get_data(mode):
     potentials = []
     equilibrateds = []
     fmaxs = []
+    switch = None
     for line in lines:
-        if 'Potential found to be' in line:
-            potentials += [float(line.split('to be')[-1].split('V (with')[0])]
+        # One line per DFT calculation, rejected steps included: the
+        # potential the potentiostat read off after it.
+        if 'potential = ' in line:
+            potentials += [float(line.split('potential = ')[1].split()[0])]
+        # always_adjust is on only in the first, loose-tolerance optimization,
+        # so the last calculation that logs it is the one after which the
+        # script tightened the criteria and went back to sequential mode.
+        if 'always_adjust:' in line:
+            switch = len(potentials)
         if 'Potential is within tolerance. Equilibrated.' in line:
             diff = [False] * (len(potentials) - len(equilibrateds))
             diff[-1] = True
             equilibrateds.extend(diff)
     with open(f'qn-Au111-H-{mode}.log') as f:
         lines = f.read().splitlines()
+    previous = None
     for line in lines:
-        if 'BFGS:' in line:
-            fmaxs += [float(line.split()[-1])]
-    return potentials, equilibrateds, fmaxs
+        if 'BFGS:' not in line:
+            continue
+        energy, fmax = line.split()[3], line.split()[4]
+        # The second optimization restarts from the geometry the first one
+        # converged to.  If tightening the potential tolerance changes
+        # nothing, its step 0 reuses the cached forces: no DFT calculation
+        # runs, no potential is logged, and the line repeats the previous one
+        # verbatim.  Skip it, or there is one more force here than there are
+        # calculations to plot it against.
+        if (energy, fmax) == previous:
+            continue
+        fmaxs += [float(fmax)]
+        previous = (energy, fmax)
+    return potentials, equilibrateds, fmaxs, switch
 
 
 def plot_data(potentials, equilibrateds, fmaxs, axes):
@@ -47,18 +67,6 @@ def plot_data(potentials, equilibrateds, fmaxs, axes):
     axes[1].plot(fmax_indices, fmaxs, 'ko-')
 
 
-def prune_duplicate(potentials, equilibrateds):
-    """Due to logging, there's a duplicate potential reading when
-    we switched from simultaneous to sequential. Remove it, and also
-    return the image number of the switch."""
-    for index, potential in enumerate(potentials):
-        if index > 0 and potential == potentials[index - 1]:
-            duplicate = index
-    del potentials[duplicate]
-    del equilibrateds[duplicate]
-    return duplicate
-
-
 def shade_plot(ax, xstart):
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
@@ -69,18 +77,17 @@ def shade_plot(ax, xstart):
 
 
 fig, ax0, ax1, ax2, ax3 = makefig()
-potentials, equilibrateds, fmaxs = get_data('seq')
+potentials, equilibrateds, fmaxs, _ = get_data('seq')
 plot_data(potentials, equilibrateds, fmaxs, [ax0, ax1])
-potentials, equilibrateds, fmaxs = get_data('sim')
-duplicate = prune_duplicate(potentials, equilibrateds)
+potentials, equilibrateds, fmaxs, switch = get_data('sim')
 plot_data(potentials, equilibrateds, fmaxs, [ax2, ax3])
 
 ax3.set_xlabel('DFT calculation')
 ax0.text(0.20, 0.75, 'sequential', transform=ax0.transAxes)
 ax2.text(0.20, 0.75, 'simultaneous', transform=ax2.transAxes)
 ax2.text(0.75, 0.75, '(sequential)', transform=ax2.transAxes)
-shade_plot(ax2, duplicate - 0.5)
-shade_plot(ax3, duplicate - 0.5)
+shade_plot(ax2, switch - 0.5)
+shade_plot(ax3, switch - 0.5)
 for ax in [ax0, ax2]:
     ax.set_ylabel(r'$\phi$, V')
 for ax in [ax1, ax3]:

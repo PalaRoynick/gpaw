@@ -125,6 +125,7 @@ class SolvationExtension(Extension):
                            cell=grid.cell * Bohr,
                            pbc=grid.pbc)
         self._atoms_moved = True  # force initial cavity build
+        self.cavity_changed = True
         self.cavity.update_atoms(self.atoms, log)
         for ia in self.interactions:
             ia.update_atoms(self.atoms, log)
@@ -133,7 +134,7 @@ class SolvationExtension(Extension):
         self.interaction_energies = {}
 
     def post_scf_convergence(self, ibzwfs, nelectrons, occ_calc, mixer,
-                             log) -> bool:
+                             energies, log) -> bool:
         """Warn if the converged charge or dielectric intrudes on
         the region occupied by the dipole layer."""
         problem = getattr(self.poisson_solver, 'dipole_region_problem',

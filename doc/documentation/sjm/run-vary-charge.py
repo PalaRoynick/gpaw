@@ -3,8 +3,9 @@ import numpy as np
 from ase import Atoms
 from ase.units import Pascal, m
 from ase.parallel import paropen
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
-from gpaw import FermiDirac
+from gpaw.extensions import SJM
+from gpaw.solvation.sjm import SJMPower12Potential
+from gpaw import GPAW, PW, FermiDirac
 from gpaw.solvation import (
     EffectivePotentialCavity,
     LinearDielectric,
@@ -20,7 +21,7 @@ def write_everything(calc, label):
     with paropen(f'esp{label}.pckl', 'wb') as f:
         pickle.dump(esp, f)
     n = calc.get_all_electron_density()
-    with open(f'allelectrondensity{label}.pckl', 'wb') as f:
+    with paropen(f'allelectrondensity{label}.pckl', 'wb') as f:
         pickle.dump(n, f)
 
 
@@ -86,10 +87,7 @@ atoms = Atoms(symbols='Pt27OH2OH2OH2OH2OH2OH2',
                    [3.71162532, 4.72529333, 15.60227465],
                    [2.36035150, 5.52417539, 15.56370623]]))
 
-# Solvated jellium parameters.
-sj = {'excess_electrons': 0.}
-
-# Implicit solvent parameters (to SolvationGPAW).
+# Implicit solvent parameters.
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
@@ -99,25 +97,23 @@ cavity = EffectivePotentialCavity(
     surface_calculator=GradientSurface())
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
+# No target potential, so these are constant-charge calculations; the
+# charge itself is set in the loop below.
+sjm = SJM(solvation=dict(cavity=cavity, dielectric=dielectric,
+                         interactions=interactions))
 
-atoms.calc = SJM(
-    mode='fd',
+atoms.calc = GPAW(
+    mode=PW(400.),
     txt='gpaw-charge.txt',
     kpts=(4, 4, 1),
     gpts=(48, 48, 192),
     xc='PBE',
     occupations=FermiDirac(0.1),
-    convergence={'work function': 0.001},
-    # Solvated jellium parameters.
-    sj=sj,
-    # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    extensions=[sjm])
 
+# sjm.change() changes the charge without throwing away the wave functions.
 for excess_electrons in [-0.2, -0.1, 0., .1, .2]:
-    sj['excess_electrons'] = excess_electrons
-    atoms.calc.set(sj=sj)
+    sjm.change(potentiostat={'excess_electrons': excess_electrons})
     atoms.get_potential_energy()
     log_potential(atoms.calc)
     write_everything(atoms.calc, label=f'{excess_electrons:.4f}')

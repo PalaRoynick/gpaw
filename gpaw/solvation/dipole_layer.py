@@ -383,14 +383,13 @@ class _FDLayer(_Layer):
         return True
 
     def _check_region(self, rhot_g, eps_g):
+        """Check that the layer region holds no net charge, and the dielectric
+        is uniform where the field is read."""
         gd = self.gd
         h = gd.h_cv[2, 2]
-        # Charge on the xy-averaged density, plane by plane (the layer's
-        # step is laterally uniform).
         nxy = gd.get_size_of_global_array()[:2].prod()
         rho_z = self._plane_averages(rhot_g, range(1, self.g_extent + 1))
-        charge = np.abs(rho_z).sum() * nxy * gd.dv
-        # Local index i is the global plane beg_c[2] + i.
+        charge = rho_z.sum() * nxy * gd.dv
         neps = max(2 * self.nn + 1 - gd.beg_c[2], 0)
         eps_r = eps_g[:, :, :neps]
         eps_min = gd.comm.min_scalar(eps_r.min() if eps_r.size else np.inf)
@@ -499,9 +498,8 @@ class _PWLayer(_Layer):
         return not broadcast_float(same, self.ps.grid.comm)
 
     def _check_region(self, rhot0_g: PWArray, eps0_R: UGArray) -> None:
-        # The layer also occupies the top of the cell, where its lower lobe
-        # wraps around; eps must be uniform within that distance (at least
-        # a few grid spacings) of z = 0 on both sides, as _tail() assumes.
+        """Check that the layer region holds no net charge, and the dielectric
+        is uniform where the field is read."""
         if self.pw.comm.rank != 0:
             return
         width = self.width
@@ -514,12 +512,10 @@ class _PWLayer(_Layer):
         charge_z = (z_z <= top) | (z_z >= L - wrap)
         reach = max(wrap, 3 * h)
         eps_z = (z_z <= reach) | (z_z >= L - reach)
-        # Charge on the xy-averaged density (the layer's step is laterally
-        # uniform, and plane-wave ringing averages out laterally).
         rhot_R = rhot0_g.ifft(grid=self.ps.grid0)
         nxy = rhot_R.data.shape[0] * rhot_R.data.shape[1]
         rho_z = rhot_R.data.mean(axis=(0, 1))
-        charge = np.abs(rho_z[charge_z]).sum() * nxy * self.ps.grid0.dv
+        charge = rho_z[charge_z].sum() * nxy * self.ps.grid0.dv
         eps_r = eps0_R.data[:, :, eps_z]
         where = f'the bottom {top * Bohr:.2f} Å'
         if wrap > 0:
@@ -563,8 +559,8 @@ def _layer_region_problem(charge, charge_where, eps_min, eps_max,
     Parameters
     ==========
     charge: float
-        Integral over the region charge_where of the absolute value of the
-        xy-averaged charge density (electrons).
+        Net charge (electrons) of the xy-averaged charge density in the
+        region charge_where.
     charge_where: str
         Description of the layer's region for the message, e.g. 'the
         bottom 3.00 Å of the cell'.
@@ -574,22 +570,28 @@ def _layer_region_problem(charge, charge_where, eps_min, eps_max,
         Description, for the message, of the region where the field is
         read.
     charge_tol: float
-        Largest charge (electrons) allowed in the layer's region.
+        Largest net charge (electrons, either sign) allowed in the layer's
+        region.
     eps_tol: float
         Largest relative spread of the dielectric, (eps_max - eps_min) /
         eps_min, allowed where the field is read.
     """
-    advice = ('Add vacuum below the slab, or move the layer down or '
-              'narrow it with Solvation(dipolelayer={"center": ..., '
-              '"width": ...}).')
-    if charge > charge_tol:
-        return (f'{charge:.1e} electrons of charge lie within '
+    if abs(charge) > charge_tol:
+        return (f'{abs(charge):.1e} electrons of net charge lie within '
                 f'{charge_where}, which the dipole layer occupies; the '
-                'dipole-layer correction will be inaccurate. ' + advice)
+                'dipole-layer correction will be inaccurate. Possible '
+                'causes: (1) atoms are too close to the layer; (2) a '
+                'counter charge, such as the SJM jellium, is too close to '
+                'the layer; (3) in plane-wave mode, your atoms or jellium '
+                'are "Gibbs ringing" into the dipole layer, which can be '
+                'caused by too low of a cutoff energy or too sharp of a '
+                'jellium edge.')
     if eps_max - eps_min > eps_tol * eps_min:
         return (f'The dielectric varies from {eps_min:.3f} to '
                 f'{eps_max:.3f} within {eps_where}, where the dipole-layer '
                 'correction reads the field and assumes it is uniform. '
                 'Keep the solvent cavity away from the bottom of the '
-                'cell.')
+                'cell and, in plane-wave mode, also from the top, which '
+                'meets the bottom across the periodic boundary (for '
+                'example with EffectivePotentialCavity(top_ramp=...)).')
     return None

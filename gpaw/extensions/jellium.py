@@ -1,12 +1,10 @@
-import numpy as np
-from ase.units import Ha
+from __future__ import annotations
 
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.core.domain import Domain
 from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.new.ibzwfs import IBZWaveFunctions
 
 
 class Jellium(ExtensionInput):
@@ -38,13 +36,24 @@ class JelliumExtension(Extension):
                  charge: float,
                  pw: Domain):
         self.charge = charge
+        self.pw = pw
+        self.set_mask(mask_r)
+
+    def set_mask(self, mask_r: UGArray) -> None:
+        """Normalize and store the shape of the jellium region.
+
+        Can be called again later if the region has to follow the atoms.
+        """
+        norm = mask_r.integrate()
+        if norm == 0.0:
+            raise ValueError('The jellium region contains no grid points.')
         self.mask_r = mask_r
-        mask_r.data *= 1.0 / mask_r.integrate()
+        mask_r.data *= 1.0 / norm
         self.mask_g = None
-        if isinstance(pw, PWDesc):
-            mask_r = mask_r.gather()
-            if mask_r is not None:
-                self.mask_g = mask_r.fft(pw=pw.new(comm=None))
+        if isinstance(self.pw, PWDesc):
+            mask0_r = mask_r.gather()
+            if mask0_r is not None:
+                self.mask_g = mask0_r.fft(pw=self.pw.new(comm=None))
 
     def update1(self, nt_r: UGArray) -> None:
         nt_r.data -= self.mask_r.data * self.charge
@@ -54,46 +63,3 @@ class JelliumExtension(Extension):
             return  # only rank-0 needs to do anything
         assert self.mask_g is not None
         nt_g.data -= self.mask_g.data * self.charge
-
-
-class FixedPotentialJelliumExtension(JelliumExtension):
-    def __init__(self,
-                 mask_r: UGArray,
-                 *,
-                 pw: Domain,
-                 workfunction_target: float,  # eV
-                 excess_electrons_guess=0.0,
-                 tolerance: float = 0.001):  # eV
-        """Adjust jellium charge to get the desired Fermi-level."""
-        super().__init__(mask_r, charge=excess_electrons_guess or 0.0, pw=pw)
-        self.workfunction_target = workfunction_target / Ha
-        self.tolerance = tolerance / Ha
-        # (Charge, Fermi-level) history:
-        self.history: list[tuple[float, float]] = []
-
-    def post_scf_convergence(self,
-                             ibzwfs: IBZWaveFunctions,
-                             nelectrons: float,
-                             occ_calc,
-                             mixer,
-                             log) -> bool:
-        fl1 = ibzwfs.fermi_level
-        log(f'charge: {self.charge:.6f} |e|, Fermi-level: {fl1 * Ha:.3f} eV')
-        fl = -self.workfunction_target
-        if abs(fl1 - fl) <= self.tolerance:
-            return True
-        self.history.append((self.charge, fl1))
-        if len(self.history) == 1:
-            area = abs(np.linalg.det(self.mask_r.desc.cell_cv[:2, :2]))
-            dc = -(fl1 - fl) * area * 0.02
-        else:
-            (c2, fl2), (c1, fl1) = self.history[-2:]
-            c = c2 + (fl - fl2) / (fl1 - fl2) * (c1 - c2)
-            dc = c - c1
-            if abs(dc) > abs(c2 - c1):
-                dc *= abs((c2 - c1) / dc)
-        self.charge += dc
-        nelectrons += dc
-        ibzwfs.calculate_occs(occ_calc, nelectrons)
-        mixer.reset()
-        return False

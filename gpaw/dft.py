@@ -74,7 +74,7 @@ class ExtensionInput(Parameter):
                 from gpaw.new.constraints import SpinDirectionConstraint
                 return SpinDirectionConstraint(**dct)
             if name == 'sjm':
-                from gpaw.new.sjm import SJM
+                from gpaw.extensions.electrochemistry import SJM
                 return SJM(**dct)
             if name == 'solvation':
                 from gpaw.solvation import Solvation

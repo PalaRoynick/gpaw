@@ -4,7 +4,9 @@ from ase.units import Pascal, m
 from ase.optimize import BFGS
 from ase.constraints import FixAtoms
 
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
+from gpaw import GPAW, PW
+from gpaw.extensions import SJM
+from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,
     LinearDielectric,
@@ -18,37 +20,37 @@ atoms.append(Atom('H', atoms[2].position + (0., 0., 1.5)))
 # Fix some atoms.
 atoms.set_constraint(FixAtoms(indices=[0, 1]))
 
-# Solvated jellium parameters.
-sj = {'target_potential': 4.2,
-      'tol': 0.2,
-      'always_adjust': True}
-
-# Implicit solvent parameters (to SolvationGPAW).
+# Implicit solvent parameters.
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
     effective_potential=SJMPower12Potential(
         H2O_layer={'style': 'ghost_atoms'}),
     temperature=298.15,  # K
-    surface_calculator=GradientSurface())
+    surface_calculator=GradientSurface(),
+    top_ramp=(1.2, 0.25))  # Å: depth, width
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
+sjm = SJM(
+    # Implicit solvent parameters.
+    solvation=dict(cavity=cavity, dielectric=dielectric,
+                   interactions=interactions),
+    # Solvated jellium parameters.
+    potentiostat=dict(
+        target_potential=4.2,
+        tol=0.2,
+        always_adjust=True))
 
 # The calculator
-calc = SJM(
+calc = GPAW(
     # General GPAW parameters.
-    mode='fd',
+    mode=PW(400.),
     txt='Au111-H-sim.txt',
-    gpts=(16, 16, 136),
+    gpts=(16, 16, 120),
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
-    # Solvated jellium parameters.
-    sj=sj,
-    # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    extensions=[sjm])
 atoms.calc = calc
 
 # Run the calculation.
@@ -56,11 +58,10 @@ opt = BFGS(atoms, trajectory='qn-Au111-H-sim.traj',
            logfile='qn-Au111-H-sim.log')
 opt.run()
 
-# Tighten the tolerances again.
-sj['tol'] = 0.01
-sj['always_adjust'] = False
-sj['slope'] = None
-calc.set(sj=sj)
+# Tighten the tolerances again.  sjm.change() reaches the running
+# calculation, and keeps the wave functions.
+sjm.change(potentiostat={'tol': 0.01, 'always_adjust': False,
+                         'slope': None})
 opt = BFGS(atoms, trajectory='qn-Au111-H-sim-1.traj',
            logfile='qn-Au111-H-sim.log')
 opt.run()

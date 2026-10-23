@@ -54,7 +54,7 @@ def get_interaction_energies(calc, legacy):
     return e_ia
 
 
-def test_fd_energy_new_vs_old(in_tmp_dir):
+def test_fd_energy_new_vs_old():
     """New-FD must reproduce old-FD."""
     ia = [SurfaceInteraction(surface_tension=18.4e-3 * Pascal * m)]
 
@@ -66,7 +66,7 @@ def test_fd_energy_new_vs_old(in_tmp_dir):
     assert e_new == pytest.approx(e_old, abs=1e-4)
 
 
-def test_interaction_energy_consistency(in_tmp_dir):
+def test_interaction_energy_consistency():
     """Check that the interaction energies are consistent between the
     new (plane-wave and finite-difference) and old (finite-difference
     only) implementations.

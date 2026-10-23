@@ -6,6 +6,7 @@ from ase.data.vdw import vdw_radii
 from ase.units import Pascal, m
 
 from gpaw import Mixer
+from gpaw.mpi import world
 from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LeakedDensityInteraction,
@@ -21,15 +22,13 @@ epsinf = 80.
 T = 298.15
 
 
-@pytest.mark.slow
-def test_solvation_forces(comm):
+def test_solvation_forces():
     atoms = Atoms('NaCl', positions=((5.6, 5.6, 6.8), (5.6, 5.6, 8.8)))
     atoms.set_cell((11.2, 11.2, 14.4))
 
     atoms.calc = SolvationGPAW(
         mode='fd',
         mixer=Mixer(0.5, 7, 50.0),
-        communicator=comm,
         xc='oldPBE', h=h, setups={'Na': '1'},
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(u0=u0),
@@ -63,7 +62,7 @@ def test_solvation_forces(comm):
         E = np.array(E)
         F = np.array(F)
 
-        if comm.rank == 0:
+        if world.rank == 0:
             np.save('d.npy', d)
             np.save('E.npy', E)
             np.save('F.npy', F)

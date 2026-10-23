@@ -37,18 +37,15 @@ from gpaw.solvation.cavity import Power12Potential
 
 
 def SJM(*args, legacy_gpaw=True, **kwargs):
-    """Backwards compatibility ..."""
-    if legacy_gpaw:
-        return OldSJM(*args, **kwargs)
-    from gpaw import GPAW
-    from gpaw.new.sjm import SJM
-    environment = SJM(cavity=kwargs.pop('cavity'),
-                      dielectric=kwargs.pop('dielectric'),
-                      interactions=kwargs.pop('interactions', None),
-                      **kwargs.pop('sj'))
-    return GPAW(
-        *args, **kwargs,
-        environment=environment)
+    """The legacy SJM calculator (an ``OldSJM``).
+
+    New GPAW uses :class:`gpaw.extensions.electrochemistry.SJM` instead."""
+    if not legacy_gpaw:
+        raise ValueError(
+            'For new GPAW, use gpaw.extensions.electrochemistry.SJM as an '
+            'extension: GPAW(..., extensions=[SJM(solvation=..., '
+            'potentiostat={...})]).')
+    return OldSJM(*args, **kwargs)
 
 
 class OldSJM(SolvationGPAW):

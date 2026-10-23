@@ -88,7 +88,9 @@ class SCFLoop:
         else:
             dens_error = 0.0
 
-        for self.niter in itertools.count(start=1):
+        niter0 = 0  # iterations before the current SCF pass
+        for niter in itertools.count(start=1):
+            self.niter = niter - niter0
             eig_error, wfs_error, energies = self.eigensolver.iterate(
                 ibzwfs, density, potential,
                 self.hamiltonian, pot_calc, energies)
@@ -129,10 +131,12 @@ class SCFLoop:
             if converged:
                 converged = all(
                     ext.post_scf_convergence(
-                        ibzwfs, nelectrons, self.occ_calc, self.mixer, log)
+                        ibzwfs, nelectrons, self.occ_calc, self.mixer,
+                        energies, log)
                     for ext in pot_calc.extensions)
                 if converged:
                     break
+                niter0 = niter  # an extension changed the system: a new pass
 
             if self.niter == maxiter:
                 if wfs_error < inf:

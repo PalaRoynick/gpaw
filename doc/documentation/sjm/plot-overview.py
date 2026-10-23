@@ -60,7 +60,12 @@ for line in lines:
     zs.append(float(z))
     jelliums.append(float(jellium))
 
-jelliums = np.array(jelliums) * atoms.cell[1][1]
+# This trace is a charge density in e/Bohr^3 -- of order 1e-5 here, and
+# negative for a positive number of excess electrons -- not the 0/1 mask the
+# legacy calculator wrote.  Scale its shape to the cell height, which is what
+# this panel plots, so that the hatched region fills it:
+rho = abs(np.array(jelliums))
+jelliums = rho / (rho.max() or 1.0) * atoms.cell[1][1]
 
 where = [True if jellium != 0 else False for jellium in jelliums]
 ax.fill_between(zs, jelliums, where=where, hatch='///', ec='0.2')

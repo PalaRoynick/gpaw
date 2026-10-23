@@ -68,7 +68,10 @@ units = {'energy': Ha,
          'magmom': 1.0,
          'magmoms': 1.0,
          'non_collinear_magmom': 1.0,
-         'non_collinear_magmoms': 1.0}
+         'non_collinear_magmoms': 1.0,
+         # SJM specific results
+         'excess_electrons': 1.0,
+         'electrode_potential': Ha}
 
 
 class DFT:
@@ -291,6 +294,9 @@ class DFT:
         self.log('Energy contributions relative to reference atoms:',
                  f'(reference = {self.setups.Eref * Ha:.6f})\n')
         self.energies.summary(self.log)
+
+        for ext in self.pot_calc.extensions:
+            ext.post_converged(self)
 
         return self.results['energy'] * units['energy']
 

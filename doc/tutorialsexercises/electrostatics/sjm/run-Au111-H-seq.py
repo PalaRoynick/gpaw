@@ -4,7 +4,9 @@ from ase.units import Pascal, m
 from ase.optimize import BFGS
 from ase.constraints import FixAtoms
 
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
+from gpaw import GPAW, PW
+from gpaw.extensions import SJM
+from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,
     LinearDielectric,
@@ -18,35 +20,33 @@ atoms.append(Atom('H', atoms[2].position + (0., 0., 1.5)))
 # Fix some atoms.
 atoms.set_constraint(FixAtoms(indices=[0, 1]))
 
-# Solvated jellium parameters.
-sj = {'target_potential': 4.2}
-
-# Implicit solvent parameters (to SolvationGPAW).
+# Implicit solvent parameters.
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
     effective_potential=SJMPower12Potential(
         H2O_layer={'style': 'ghost_atoms'}),
     temperature=298.15,  # K
-    surface_calculator=GradientSurface())
+    surface_calculator=GradientSurface(),
+    top_ramp=(1.2, 0.25))  # Å: depth, width
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
 # The calculator
-calc = SJM(
+calc = GPAW(
     # General GPAW parameters.
-    mode='fd',
+    mode=PW(400.),
     txt='Au111-H-seq.txt',
-    gpts=(16, 16, 136),
+    gpts=(16, 16, 120),
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
-    # Solvated jellium parameters.
-    sj=sj,
-    # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    extensions=[SJM(
+        # Implicit solvent parameters.
+        solvation=dict(cavity=cavity, dielectric=dielectric,
+                       interactions=interactions),
+        # Solvated jellium parameters.
+        potentiostat=dict(target_potential=4.2))])
 atoms.calc = calc
 
 # Run the calculation.

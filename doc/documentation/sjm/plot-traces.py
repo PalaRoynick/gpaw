@@ -25,7 +25,14 @@ def get_potential_trace(filename):
     with open(filename, 'rb') as f:
         phi = pickle.load(f)
     phi = phi.mean(axis=(0, 1))
-    return phi
+    # Reference the trace to the vacuum below the slab -- the "bulk" side --
+    # so that the change with potential shows up in the solvent.  Not to
+    # z = 0: SJM pins the potential in the solvent at the top of the cell, and
+    # in PW mode the cell is periodic, so z = 0 is that same pinned point and
+    # subtracting it would leave the curves referenced to the solvent.
+    zs = np.linspace(0., atoms.cell[2][2], num=len(phi))
+    zref = 0.5 * atoms.positions[:, 2].min()  # halfway up to the lowest atom
+    return phi - phi[int(np.argmin(abs(zs - zref)))]
 
 
 fig, ax_potential = pyplot.subplots(figsize=(6.4, 2.2))
@@ -38,13 +45,11 @@ atoms = ase.io.read('atoms.traj')
 
 z_trace44 = get_potential_trace('esp4.4V.pckl')
 z_trace43 = get_potential_trace('esp4.3V.pckl')
-z_trace44 -= z_trace44[0]
-z_trace43 -= z_trace43[0]
 diff = z_trace43 - z_trace44
-zs = np.linspace(0., atoms.cell[2][2], num=len(diff))
-ax_potential.plot(zs, diff, color='C1', linewidth=2)
-label_at = int(len(zs) * 0.80)
-ax_potential.text(zs[label_at], diff[label_at] + 0.01, 'potential',
+zs_phi = np.linspace(0., atoms.cell[2][2], num=len(diff))
+ax_potential.plot(zs_phi, diff, color='C1', linewidth=2)
+label_at = int(len(zs_phi) * 0.80)
+ax_potential.text(zs_phi[label_at], diff[label_at] + 0.01, 'potential',
                   ha='center', va='center', color='C1')
 
 ###########################
@@ -57,8 +62,10 @@ ax_electrons = ax_potential.twinx()
 z_trace44 = get_electron_trace('all4.4V.pckl')
 z_trace43 = get_electron_trace('all4.3V.pckl')
 diff = z_trace43 - z_trace44
-ax_electrons.plot(zs, diff)
-ax_electrons.text(zs[label_at], diff[label_at] - 0.003, 'electrons',
+zs_n = np.linspace(0., atoms.cell[2][2], num=len(diff))
+label_at_n = int(len(zs_n) * 0.80)
+ax_electrons.plot(zs_n, diff)
+ax_electrons.text(zs_n[label_at_n], diff[label_at_n] - 0.003, 'electrons',
                   ha='center', va='center', color='C0')
 
 ###########################
@@ -93,10 +100,10 @@ ax_potential.set_zorder(2)
 ax_electrons.set_zorder(1)
 ax_potential.patch.set_visible(False)
 
-ax_potential.set_ylabel(r'$\phi_{xy}$(4.4 V) - $\phi_{xy}$(4.3 V), V')
+ax_potential.set_ylabel(r'$\phi_{xy}$(4.3 V) - $\phi_{xy}$(4.4 V), V')
 ax_potential.yaxis.set_major_locator(MultipleLocator(0.1))
 ax_potential.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax_electrons.set_ylabel(r'$n_{xy}$(4.4 V) - $n_{xy}$(4.3 V)')
+ax_electrons.set_ylabel(r'$n_{xy}$(4.3 V) - $n_{xy}$(4.4 V)')
 ax_electrons.yaxis.set_major_locator(MultipleLocator(0.01))
 ax_electrons.yaxis.set_minor_locator(AutoMinorLocator(2))
 

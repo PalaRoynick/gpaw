@@ -12,6 +12,8 @@ class Extension:
     """
 
     name = 'unnamed extension'
+
+    # XXX: Careful charge has opposite sign here then in base GPAW
     charge = 0.0
 
     def get_energy_contributions(self) -> dict[str, float]:
@@ -49,27 +51,43 @@ class Extension:
                              nelectrons: float,
                              occ_calc,
                              mixer,
+                             energies,
                              log) -> bool:
         """Allow for environment to "converge"."""
         return True
 
     def update1(self, nt_r) -> None:
         """Hook called right before solving the Poisson equation."""
-        pass
 
     def update1pw(self, nt_g) -> None:
         """PW-mode hook called right before solving the Poisson equation."""
-        pass
 
     def update2(self, nt_r, vHt_r, vt_sr) -> None:
         """Hook called right after solving the Poisson equation."""
-        pass
 
     def update2pw(self, nt_g, vHt_h, vt_sr) -> None:
         """PW-mode hook called right after solving the Poisson equation."""
-        pass
+
+    def post_converged(self, dft) -> None:
+        """Hook called after the SCF-loop has converged.
+
+        Called from :meth:`gpaw.new.calculation.DFT.calculate_energy`
+        once the energies have been logged and put into ``dft.results``.
+        Can be used to write to ``dft.log`` and to add or replace entries
+        in ``dft.results`` (which are handed on to ASE).  Any new key must
+        have a unit-conversion factor in ``gpaw.new.calculation.units``.
+        """
 
     def update_potential(self,
                          vt_sR: UGArray,
                          density) -> float:
         return 0.0
+
+
+# Allow importing import SJM from gpaw.extensions while keeping a tidy code.
+# More extension could, in principle be added.
+def __getattr__(name):
+    if name == 'SJM':
+        from gpaw.extensions.electrochemistry import SJM
+        return SJM
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

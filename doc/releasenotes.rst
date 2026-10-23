@@ -39,6 +39,18 @@ Git master branch
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 
+* New flourine PAW potential added to our :ref:`setup releases`.
+  It should be as accurate as the old one but will converge faster with
+  number of plane-waves.  The old potential is still the default, but
+  it is recommended that the new one is used for production calculations.
+  You can use it by specifying
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
+  It has been generated with the following command::
+
+    $ gpaw dataset F -fPBE -w -t v2 -b
+
+  There is also an LDA version of the potential.
+
 * Implicit solvation calculations should now be used through the new interface,
   as extensions: ``GPAW(..., extensions=[Solvation(...)])``. The legacy
   interface is still available via ``gpaw.old.solvation``; in particular, the
@@ -57,17 +69,23 @@ Git master branch
   :ref:`solvation dipole documentation<solvation_dipole>`
   for examples and options.
 
-* New flourine PAW potential added to our :ref:`setup releases`.
-  It should be as accurate as the old one but will converge faster with
-  number of plane-waves.  The old potential is still the default, but
-  it is recommended that the new one is used for production calculations.
-  You can use it by specifying
-  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
-  It has been generated with the following command::
+* The solvated jellium method (``gpaw.extensions.electrochemistry.SJM``) has been ported
+  to the :ref:`newgpaw` architecture. Other than before it is now used as an
+  extension to the GPAW calculator, and not as a separate calculator, as
+  described in :ref:`sjm`.  It now also allows the use of PW-mode.
+  ``SJM(solvation=..., potentiostat={...})`` takes the implicit-solvent
+  model and, in place of the ``sj`` dictionary, a ``potentiostat``
+  dictionary; ``sjm.change(potentiostat={...})``, called on that ``SJM``
+  object, substitutes the previous ``calc.set(sj={...})``.  Most of the
+  keys keep their names and meanings, with these exceptions:
 
-    $ gpaw dataset F -fPBE -w -t v2 -b
-
-  There is also an LDA version of the potential.
+  * ``max_step`` is now called ``max_potential_stepsize``; the old name is
+    not accepted.
+  * ``tol`` defaults to 0.005 V and ``mixer`` to 0.2, where the legacy
+    calculator used 0.01 V and 0.5.
+  * ``pot_ref``, ``cip``, ``dirichlet`` and ``fdt`` have no equivalent yet,
+    so constant inner potential (CIP) calculations still need the legacy
+    ``gpaw.solvation.sjm.SJM`` calculator.
 
 * PW-mode calculations parallelized over spin, k-points and/or bands can
   now distribute the density to all cores for netter parallelization of

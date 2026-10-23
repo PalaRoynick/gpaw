@@ -218,7 +218,11 @@ class DFTComponentsBuilder:
         return f'{self.__class__.__name__}({self.atoms}, {self.params})'
 
     def get_extensions(self):
-        return [ext.build(self) for ext in self.params.extensions]
+        extensions = []
+        for ext in self.params.extensions:
+            built = ext.build(self)  # one extension, or a list of them
+            extensions += built if isinstance(built, list) else [built]
+        return extensions
 
     @cached_property
     def charge(self) -> float:

@@ -10,7 +10,14 @@ def get_potential_trace(filename):
     with open(filename, 'rb') as f:
         phi = pickle.load(f)
     phi = phi.mean(axis=(0, 1))
-    return phi
+    # Reference the trace to the vacuum below the slab -- the "bulk" side --
+    # so that the change with charge shows up in the solvent.  Not to z = 0:
+    # SJM pins the potential in the solvent at the top of the cell, and in PW
+    # mode the cell is periodic, so z = 0 is that same pinned point and
+    # subtracting it would leave the curves referenced to the solvent.
+    zs = np.linspace(0., atoms.cell[2][2], num=len(phi))
+    zref = 0.5 * atoms.positions[:, 2].min()  # halfway up to the lowest atom
+    return phi - phi[int(np.argmin(abs(zs - zref)))]
 
 
 def get_electron_trace(filename):
@@ -37,16 +44,17 @@ fig.subplots_adjust(right=0.99, top=0.99)
 
 ax = axes[0]
 z_trace0 = get_potential_trace('esp0.0000.pckl')
-z_trace0 -= z_trace0[0]
 
 for excess_electron in excess_electrons:
     label = f'{excess_electron:.4f}'
     z_trace = get_potential_trace(f'esp{label}.pckl')
-    z_trace -= z_trace[0]
     diff = z_trace - z_trace0
-    zs = np.linspace(0., atoms.cell[2][2], num=len(diff))
-    ax.plot(zs, diff, color='C1', linewidth=2)
-    ax.text(zs[-1] + 1., diff[-1], f'{excess_electron:+.1f}',
+    # The electrostatic potential comes back on the fine grid and the
+    # all-electron density on the coarse one -- in PW mode they differ by a
+    # factor of two -- so each panel gets its own z axis.
+    zs_phi = np.linspace(0., atoms.cell[2][2], num=len(diff))
+    ax.plot(zs_phi, diff, color='C1', linewidth=2)
+    ax.text(zs_phi[-1] + 1., diff[-1], f'{excess_electron:+.1f}',
             ha='left', va='center', color='C1')
 
 ###########################
@@ -60,15 +68,16 @@ for excess_electron in excess_electrons:
     label = f'{excess_electron:.4f}'
     z_trace = get_electron_trace(f'allelectrondensity{label}.pckl')
     diff = z_trace - z_trace0
-    ax.plot(zs, diff, color='C0')
-    ax.text(zs[-1] + 1., diff[-1], f'{excess_electron:+.1f}',
+    zs_n = np.linspace(0., atoms.cell[2][2], num=len(diff))
+    ax.plot(zs_n, diff, color='C0')
+    ax.text(zs_n[-1] + 1., diff[-1], f'{excess_electron:+.1f}',
             ha='left', va='center', color='C0')
 
 ###########################
 # Touch up.
 ###########################
 
-axes[0].set_xlim(0., zs[-1] + 4.)
+axes[0].set_xlim(0., zs_phi[-1] + 4.)
 axes[0].set_ylabel(r'$\Delta \phi_{xy}$, V')
 axes[1].set_ylabel(r'$\Delta n_{xy}$')
 axes[1].set_xlabel(r'$z$ coordinate, $\mathrm{\AA}$')

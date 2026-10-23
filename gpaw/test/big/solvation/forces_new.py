@@ -6,6 +6,7 @@ from ase.units import Pascal, m
 
 from gpaw import PW, FermiDirac
 from gpaw.new.ase_interface import GPAW
+from gpaw.extensions.electrochemistry import SJM
 from gpaw.solvation import Solvation
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LinearDielectric, Power12Potential)
@@ -20,7 +21,8 @@ def make_atoms(cell, pbc):
     return atoms
 
 
-def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False):
+def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False,
+              sjm=False, **solvation_kwargs):
     mode_kwargs = (dict(mode=PW(ecut)) if mode == 'pw'
                    else dict(mode='fd', h=h))
     extensions = []
@@ -29,14 +31,16 @@ def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False):
         interactions = [SurfaceInteraction(surface_tension=1.6 * Pascal * m),
                         VolumeInteraction(pressure=-3.2e9 * Pascal)]
     if solvated:
-        extensions = [Solvation(
+        solvation = dict(
             cavity=EffectivePotentialCavity(
                 effective_potential=Power12Potential(u0=0.180),
                 temperature=298.15,
                 surface_calculator=GradientSurface(),
                 volume_calculator=KB51Volume()),
             dielectric=LinearDielectric(epsinf=80.0),
-            interactions=interactions)]
+            interactions=interactions)
+        extensions = [SJM(solvation=solvation) if sjm else
+                      Solvation(**solvation, **solvation_kwargs)]
     return GPAW(
         **mode_kwargs,
         kpts=(1, 1, 1),
@@ -47,7 +51,7 @@ def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False):
         extensions=extensions)
 
 
-def test_pw_solvation_forces(in_tmp_dir):
+def test_pw_solvation_forces():
     """PW: symmetry limits, -dE/dz, and both terms non-negligible."""
     atoms = make_atoms([7., 7., 9.], True)
 
@@ -73,7 +77,7 @@ def test_pw_solvation_forces(in_tmp_dir):
     assert abs(F_solv[0, 2] - F_bare[0, 2]) > 0.3
 
 
-def test_pw_fd_forces_agree(in_tmp_dir):
+def test_pw_fd_forces_agree():
     """PW/FD: plane-wave forces match finite-difference mode forces."""
     atoms = make_atoms([10., 10., 12.], True)
 
@@ -93,7 +97,7 @@ def test_pw_fd_forces_agree(in_tmp_dir):
         print('FD forces:', atoms.get_forces())
 
 
-def test_fd_solvation_forces(in_tmp_dir):
+def test_fd_solvation_forces():
     """FD mode: analytic forces match -dE/dz of the energy."""
     atoms = make_atoms([8., 8., 11.], False)
 
