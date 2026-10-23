@@ -4,6 +4,7 @@ import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.xc.kernel import XCKernel
 import numpy as np
+from gpaw.gpu import cupy as cp
 
 
 class FunctionalNeedsLaplacianError(Exception):
@@ -42,8 +43,8 @@ class LibXC(XCKernel):
 
         # True if the libxc installation supports GPU
         self.gpu_available = (
-            hasattr(cgpaw, 'lxcXCFunctionalDeviceAvailable') and
-            cgpaw.lxcXCFunctionalDeviceAvailable())
+            hasattr(cgpaw, 'libxc_has_gpu_support') and
+            cgpaw.libxc_has_gpu_support())
         self._device_xc = None
         """Holds the GPU version of libxc object. Created only on first use"""
 
@@ -133,18 +134,48 @@ class LibXC(XCKernel):
         npoints = int(np.prod(shape))
 
         device_xc = self.get_device_functional()
+
+        # Accumulate results over each functional type. Scratch space for
+        # holding individual results:
+        e_g_scratch = cp.empty_like(e_g)
+        dedn_sg_scratch = cp.empty_like(dedn_sg)
+        # Derivatives are technically optional for libxc but here we always
+        # pass de/dn. Hence, must always pass other first derivatives too.
+        dedsigma_xg_scratch = (
+            None if sigma_xg is None else cp.empty_like(sigma_xg))
+        dedtau_sg_scratch = (
+            None if tau_sg is None else cp.empty_like(tau_sg))
+
+        density_g_total = n_sg.sum(axis=0)
+
         for index in range(device_xc.number_of_functionals()):
             cgpaw.evaluate_lxcfunctional_device(
                 device_xc,
                 index,
                 npoints,
                 n_sg,
-                e_g,
-                dedn_sg,
+                e_g_scratch,
+                dedn_sg_scratch,
                 sigma_xg,
-                dedsigma_xg,
+                dedsigma_xg_scratch,
                 tau_sg,
-                dedtau_sg)
+                dedtau_sg_scratch)
+
+            # Accumulate
+            if index == 0:
+                # Our e_g is energy density, libxc returns energy per particle
+                e_g[:] = density_g_total * e_g_scratch
+                if dedsigma_xg is not None:
+                    dedsigma_xg[:] = dedsigma_xg_scratch
+                if dedtau_sg is not None:
+                    dedtau_sg[:] = dedtau_sg_scratch
+            else:
+                e_g += density_g_total * e_g_scratch
+                if dedsigma_xg is not None:
+                    dedsigma_xg += dedsigma_xg_scratch
+                if dedtau_sg is not None:
+                    dedtau_sg += dedtau_sg_scratch
+            dedn_sg += dedn_sg_scratch
 
     def set_omega(self, omega=None):
         """Set the value of gamma/omega in RSF."""
@@ -161,7 +192,7 @@ class LibXC(XCKernel):
             raise RuntimeError("Requires Libxc built with GPU support")
 
         if self._device_xc is None:
-            self._device_xc = cgpaw.lxcXCFunctional(self._creation_args, True)
+            self._device_xc = cgpaw.lxcXCFunctional(*self._creation_args, True)
 
             if self.omega is not None:
                 self._device_xc.set_omega(self.omega)

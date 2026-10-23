@@ -18,13 +18,12 @@ pytestmark = [
 
 
 @pytest.mark.parametrize('nspins', [1, 2])
-@pytest.mark.parametrize('with_derivatives', [True, False])
 @pytest.mark.parametrize(
     'name',
     ['LDA_X+LDA_C_PW',
      'GGA_X_PBE+GGA_C_PBE',
      'MGGA_X_SCAN+MGGA_C_SCAN'])
-def test_libxc_gpu(name: str, nspins: int, with_derivatives: bool) -> None:
+def test_libxc_gpu(name: str, nspins: int) -> None:
     """Compares CPU and GPU evaluations of a libxc functional."""
 
     rng = np.random.default_rng(81 + nspins)
@@ -38,14 +37,6 @@ def test_libxc_gpu(name: str, nspins: int, with_derivatives: bool) -> None:
     gpu_potential_sg = cp.asarray(potential_sg)
     gpu_energy_g = cp.empty(shape)
 
-    # Derivative output arrays can be None if they are not needed.
-    # Test that it actually works:
-    def make_derivative_array(xp, base_array):
-        if with_derivatives:
-            return xp.empty_like(base_array)
-        else:
-            return None
-
     if functional.type == 'LDA':
         functional.calculate(energy_g, density_sg, potential_sg)
         functional.calculate_gpu(
@@ -56,9 +47,9 @@ def test_libxc_gpu(name: str, nspins: int, with_derivatives: bool) -> None:
         # GGA/MGGA, the latter appends a few more in/out args
         nsigma = 2 * nspins - 1
         sigma_xg = rng.uniform(0.0, 0.4, (nsigma,) + shape)
-        sigma_derivative_xg = make_derivative_array(np, sigma_xg)
+        sigma_derivative_xg = np.empty_like(sigma_xg)
         gpu_sigma_xg = cp.asarray(sigma_xg)
-        gpu_sigma_derivative_xg = make_derivative_array(cp, gpu_sigma_xg)
+        gpu_sigma_derivative_xg = cp.empty_like(gpu_sigma_xg)
 
         arguments = [energy_g, density_sg, potential_sg,
                      sigma_xg, sigma_derivative_xg]
@@ -70,9 +61,9 @@ def test_libxc_gpu(name: str, nspins: int, with_derivatives: bool) -> None:
 
         if functional.type == 'MGGA':
             tau_sg = rng.uniform(0.01, 1.0, density_sg.shape)
-            tau_derivative_sg = make_derivative_array(np, tau_sg)
+            tau_derivative_sg = np.empty_like(tau_sg)
             gpu_tau_sg = cp.asarray(tau_sg)
-            gpu_tau_derivative_sg = make_derivative_array(cp, gpu_tau_sg)
+            gpu_tau_derivative_sg = cp.empty_like(gpu_tau_sg)
             arguments += [tau_sg, tau_derivative_sg]
             gpu_arguments += [gpu_tau_sg, gpu_tau_derivative_sg]
             result_pairs.append((tau_derivative_sg, gpu_tau_derivative_sg))

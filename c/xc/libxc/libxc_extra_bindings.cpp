@@ -3,6 +3,7 @@
 #include <pybind11/stl.h>
 #include "libxc_wrapper.h"
 #include <xc.h>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <optional>
@@ -10,12 +11,26 @@
 namespace py = pybind11;
 using gpaw::PyDeviceArray;
 
-/** Evaluates the energy density and its first derivative for an lxcXCFunctionalObject on GPU.
+extern PyTypeObject lxcXCFunctionalType;
+
+/** Extracts the C type from Python-side libxcFunctional object.
+ * Needed because the type binding is done with raw CPython so pybind11 isn't aware of it. */
+static lxcXCFunctionalObject& unwrap_lxc_functional(py::handle obj)
+{
+    PyObject* ptr = obj.ptr();
+    if (ptr == nullptr || Py_TYPE(ptr) != &lxcXCFunctionalType)
+    {
+        throw py::type_error("Expected an lxcXCFunctional object");
+    }
+    return *reinterpret_cast<lxcXCFunctionalObject*>(ptr);
+}
+
+/** Evaluates the energy and its first derivative for an lxcXCFunctionalObject on GPU.
 * The non-const arrays are all output arguments. num_points should be the (domain-local) grid size,
 * ie. size of the second dimension in arrays like rho_sg.
 */
 static void evaluate_lxcfunctional_device(
-    const lxcXCFunctionalObject& xc,
+    py::handle lxc_functional,
     int32_t functional_index,
     size_t num_points,
     const PyDeviceArray& n_sg,                              // density
@@ -26,6 +41,8 @@ static void evaluate_lxcfunctional_device(
     const std::optional<PyDeviceArray>& tau_sg,
     std::optional<PyDeviceArray>& dedtau_sg)                // derivative: de/dtau
 {
+    const lxcXCFunctionalObject& xc = unwrap_lxc_functional(lxc_functional);
+
     if (!xc.on_device)
     {
         throw std::runtime_error("Libxc functional has not been initialized for GPU arrays");
@@ -38,8 +55,6 @@ static void evaluate_lxcfunctional_device(
 
     const auto functional = xc.functional[functional_index];
 
-    // Passing NULL for output derivatives is OK if they are not needed
-
     switch (functional->info->family)
     {
     case XC_FAMILY_LDA:
@@ -51,16 +66,15 @@ static void evaluate_lxcfunctional_device(
     case XC_FAMILY_GGA:
     case XC_FAMILY_HYB_GGA:
     {
-        if (!sigma_xg.has_value())
+        // Libxc allows nullptr for derivatives, however we always pass dedn_sg and it seems that
+        // this necessitates other first derivatives are passed too.
+        if (!sigma_xg.has_value() || !dedsigma_xg.has_value())
         {
-            throw std::runtime_error("sigma_xg must be provided for this functional");
+            throw std::runtime_error("sigma_xg and dedsigma_xg must be provided for this functional");
         }
 
-        const double* sigma_xg_ptr = sigma_xg.value().data<double>();
-        double* dedsigma_xg_ptr = dedsigma_xg.has_value() ? dedsigma_xg.value().data<double>() : nullptr;
-
-        xc_gga_exc_vxc(functional, num_points, n_sg.data<double>(), sigma_xg_ptr, e_g.data<double>(),
-            dedn_sg.data<double>(), dedsigma_xg_ptr);
+        xc_gga_exc_vxc(functional, num_points, n_sg.data<double>(), sigma_xg.value().data<double>(), e_g.data<double>(),
+            dedn_sg.data<double>(), dedsigma_xg.value().data<double>());
         break;
     }
     case XC_FAMILY_MGGA:
@@ -72,19 +86,16 @@ static void evaluate_lxcfunctional_device(
         // More explicit check is on Python side
         assert((functional->info->flags & XC_FLAGS_NEEDS_LAPLACIAN) == 0);
 
-        if (!sigma_xg.has_value() || !tau_sg.has_value())
+        if (!sigma_xg.has_value() || !tau_sg.has_value() || !dedsigma_xg.has_value() || !dedtau_sg.has_value())
         {
-            throw std::runtime_error("sigma_xg and tau_sg must be provided for this functional");
+            throw std::runtime_error("sigma_xg and tau_sg, and respective derivatives, must be provided for this functional");
         }
+        require_matching_derivative(sigma_xg.has_value(), dedsigma_xg.has_value(), "sigma_xg", "dedsigma_xg");
+        require_matching_derivative(tau_sg.has_value(), dedtau_sg.has_value(), "tau_sg", "dedtau_sg");
 
-        const double* sigma_xg_ptr = sigma_xg.value().data<double>();
-        double* dedsigma_xg_ptr = dedsigma_xg.has_value() ? dedsigma_xg.value().data<double>() : nullptr;
-        const double* tau_sg_ptr = tau_sg.value().data<double>();
-        double* dedtau_sg_ptr = dedtau_sg.has_value() ? dedtau_sg.value().data<double>() : nullptr;
-
-        xc_mgga_exc_vxc(functional, num_points, n_sg.data<double>(), sigma_xg_ptr, lapl, tau_sg_ptr,
-            e_g.data<double>(), dedn_sg.data<double>(), dedsigma_xg_ptr,
-            lapl_derivative, dedtau_sg_ptr);
+        xc_mgga_exc_vxc(functional, num_points, n_sg.data<double>(), sigma_xg.value().data<double>(), lapl, tau_sg.value().data<double>(),
+            e_g.data<double>(), dedn_sg.data<double>(), dedsigma_xg.value().data<double>(),
+            lapl_derivative, dedtau_sg.value().data<double>());
         break;
     }
     default:

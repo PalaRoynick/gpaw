@@ -70,13 +70,13 @@ class XCKernel:
         assert dedn_sg.dtype == float
         if self.type != 'LDA':
             assert sigma_xg.shape == (2 * S - 1,) + G
-            assert dedsigma_xg.shape == (2 * S - 1,) + G
             assert sigma_xg.flags.c_contiguous and sigma_xg.dtype == float
+            assert dedsigma_xg.shape == (2 * S - 1,) + G
             assert (dedsigma_xg.flags.c_contiguous and
                     dedsigma_xg.dtype == float)
             if self.type == 'MGGA':
                 assert tau_sg.shape == (S,) + G
-                assert dedtau_sg.shape == (S,) + G
                 assert tau_sg.flags.c_contiguous and tau_sg.dtype == float
+                assert dedtau_sg.shape == (S,) + G
                 assert (dedtau_sg.flags.c_contiguous and
                         dedtau_sg.dtype == float)
