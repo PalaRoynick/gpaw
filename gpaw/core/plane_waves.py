@@ -381,8 +381,9 @@ class PWArray(XArray[PWDesc]):
         return txt + ')'
 
     def __getitem__(self, index: int | slice) -> PWArray:
-        if self.comm.size == 1 and isinstance(index, slice) \
-                and index.stop == len(self.data) and index.start in (0, None):
+        if self.comm.size == 1 and isinstance(index, slice) and \
+                index.stop in (len(self.data), None) and \
+                index.start in (0, None):
             return self
         data = self.data[index]
         return PWArray(self.desc,
@@ -765,7 +766,8 @@ class PWArray(XArray[PWDesc]):
 
             plan.ifft_sphere(a_xG.data, pw0, a_xR)
             if xp is np:
-                add_to_density(weight_x[0], a_xR.data[0], b1_R.data)
+                for weight, a_R in zip(weight_x, a_xR.data):
+                    add_to_density(weight, a_R, b1_R.data)
             else:
                 add_to_density_gpu(weight_x, a_xR.data,
                                    b1_R.data)

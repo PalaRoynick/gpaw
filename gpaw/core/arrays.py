@@ -11,7 +11,6 @@ from gpaw.core.domain import Domain
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import XP
 from gpaw.mpi import MPIComm
-from gpaw.new import trace
 from gpaw.typing import Array1D, ArrayND, Self, Any
 
 if TYPE_CHECKING:
@@ -132,7 +131,6 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
-    @trace
     def fullshape_iter_by_dims(self, buffer_mX, out_nX=None):
         nm = buffer_mX.mydims[0]
         b = self.mydims[0]
@@ -240,7 +238,6 @@ class XArray(Generic[DomainType], XP):
 
         return self._matrix
 
-    @trace
     def matrix_elements(self,
                         other: Self,
                         *,
