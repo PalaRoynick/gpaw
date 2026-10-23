@@ -84,15 +84,18 @@ class FFTMetric(BaseMetric):
         super().__init__(g_ss, **kwargs)
 
     def __call__(self, n_sX: XArray,
-                 out: XArray | None = None) -> XArray:
+                 out: XArray | None = None,
+                 order: int = 1) -> XArray:
         if out is None:
             out = n_sX.new()
         # We will now assume that the density is represented
         # in real space. This may change in the future.
 
+        weight = self.weight ** order
+        sigma = self.sigma * (weight - 1) / weight
         ekin_G = self.xp.asarray(self.pw.ekin_G)
-        w_G = ((self.weight - 1) + ekin_G) / (self.sigma + ekin_G)
-        w_G *= self.sigma / self.weight
+        w_G = ((weight - 1) + ekin_G) / (sigma + ekin_G)
+        w_G *= sigma / weight
 
         assert isinstance(n_sX, UGArray)
 
