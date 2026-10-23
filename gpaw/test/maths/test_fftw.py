@@ -13,10 +13,12 @@ n1, n2, n3 = 8, 6, 12
 
 def check(Plans, flags, dtype):
     t0 = time.time()
-    tmp = Plans._overwrite_flags
-    Plans._overwrite_flags = flags  # Hack to avoid the test overwrite
+    if flags is not None:
+        tmp = Plans._overwrite_flags
+        Plans._overwrite_flags = flags  # Hack to avoid the test overwrite
     plan = Plans((n1, n2, n3), dtype=dtype, blocksize=blocksize)
-    Plans._overwrite_flags = tmp  # Restore the value
+    if flags is not None:
+        Plans._overwrite_flags = tmp  # Restore the value
     t1 = time.time()
     t = 0.0
     for i in range(N):
@@ -31,7 +33,7 @@ def check(Plans, flags, dtype):
 
 @pytest.mark.skipif(not fftw.have_fftw(), reason='No FFTW')
 @pytest.mark.parametrize('dtype', [np.float64, np.complex128])
-@pytest.mark.parametrize('plan_info', [(fftw.NumpyFFTPlans, 117),
+@pytest.mark.parametrize('plan_info', [(fftw.NumpyFFTPlans, None),
                                        (fftw.FFTWPlans, fftw.ESTIMATE),
                                        (fftw.FFTWPlans, fftw.MEASURE),
                                        (fftw.FFTWPlans, fftw.PATIENT),
