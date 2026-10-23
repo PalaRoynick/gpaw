@@ -292,7 +292,7 @@ class MSR1Mixer(BaseMixer):
             D_asii.data += A * beta * (self.R_hsX[h][1] - self.R_hsX[-1][1])
 
         # Right precond:
-        nt_sX.data -= self.uk_1sX.data[0] * A
+        nt_sX.data[0] -= self.uk_1sX.data[0, 0] * A
 
         # Step 10: Update density history
         if increased_error > self.hard_lim:
@@ -410,7 +410,7 @@ class MSR1Mixer(BaseMixer):
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
         D_asii.data += self.beta * self.R_hsX[-1][1]
-        nt_sX.data -= self.uk_1sX.data[0] * self.beta
+        nt_sX.data[0] -= self.uk_1sX.data[0, 0] * self.beta
 
         self.nt_hsX.add(nt_sX, D_asii)
         self.add_compensation_charge(nt_sX, D_asii, density,

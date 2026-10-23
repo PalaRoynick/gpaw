@@ -103,7 +103,7 @@ class PulayMixer(BaseMixer):
             D_asii.data += alpha * self.nt_hsX[h][1]
 
         # Step 4: Update the density history
-        nt_sX.data -= MRc_sX.data
+        nt_sX.data[0] -= MRc_sX.data[0, 0]
         self.nt_hsX.add(nt_sX, D_asii)
 
         # Step 5: Return the mixing error
