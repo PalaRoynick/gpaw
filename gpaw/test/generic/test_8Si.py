@@ -31,8 +31,6 @@ def test_generic_8Si():
     bulk.calc = calc
     f1 = bulk.get_forces()[0, 2]
     e1 = bulk.get_potential_energy()
-    v_xc = vxc(calc.gs_adapter())
-    print(v_xc)
     niter1 = calc.get_number_of_iterations()
 
     f2 = calculate_numerical_forces(bulk, 0.001, [0], [2])[0, 0]
