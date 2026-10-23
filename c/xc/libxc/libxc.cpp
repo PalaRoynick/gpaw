@@ -3,27 +3,49 @@
  *  Please see the accompanying LICENSE file for further information. */
 
 #include "python_utils.h"
+#include "libxc_wrapper.h"
 #include <xc.h>
 #if XC_MAJOR_VERSION >= 7
   #include <xc_funcs.h>
   #include <xc_funcs_removed.h>
 #endif
-#include "xc_gpaw.h"
+#include "xc/xc_gpaw.h"
 #include "extensions.h"
 #include <assert.h>
 
-typedef struct
-{
-  PyObject_HEAD
-  /* exchange-correlation energy second derivatives */
-  void (*get_fxc)(XC(func_type) *func, double point[7], double der[5][5]);
-  XC(func_type) xc_functional;
-  XC(func_type) x_functional;
-  XC(func_type) c_functional;
-  XC(func_type) *functional[2]; /* store either x&c, or just xc */
-  int nspin; /* must be common to x and c, so declared redundantly here */
-} lxcXCFunctionalObject;
 
+bool libxc_has_gpu_support()
+{
+#ifdef XC_FLAGS_ON_DEVICE
+  // Unclear if libxc provides any stable way of checking this!
+  // For now, we check if based on default flags (libxc defaults to device functionals if built with GPU support)
+  return (xc_func_info_get_default_flags() & XC_FLAGS_ON_DEVICE) != 0;
+#endif
+  return false;
+}
+
+/** Inits the input libxc functional.
+ * The macro XC(...) is needed for compatibility with old libxc.
+ */
+static int initialize_functional(XC(func_type) *functional, int number, int nspin, bool on_device)
+{
+#ifdef XC_FLAGS_ON_DEVICE
+  int flags = on_device ? XC_FLAGS_ON_DEVICE : XC_FLAGS_ON_HOST;
+  return XC(func_init_flags)(functional, number, nspin, flags);
+#endif
+  // Caller should ensure the GPU path is not attempted without supporting libxc build
+  assert(!on_device);
+  return XC(func_init)(functional, number, nspin);
+}
+
+/** Returns the number of internal functionals available (ie. do we have x and c or just xc)
+ */
+static PyObject* lxcXCFunctional_number_of_functionals(
+  lxcXCFunctionalObject *self,
+  [[maybe_unused]] PyObject *args)
+{
+  return PyLong_FromLong(self->functional[1] == NULL ? 1 : 2);
+}
 
 static void lxcXCFunctional_dealloc(lxcXCFunctionalObject *self)
 {
@@ -636,6 +658,8 @@ static PyMethodDef lxcXCFunctional_Methods[] = {
    (PyCFunction)lxcXCFunctional_disable_fhc, METH_VARARGS, 0},
   {"set_omega",
    (PyCFunction)lxcXCFunctional_set_omega, METH_VARARGS, 0},
+   {"number_of_functionals",
+   (PyCFunction)lxcXCFunctional_number_of_functionals, METH_NOARGS, 0},
   {"calculate",
    (PyCFunction)lxcXCFunctional_Calculate, METH_VARARGS, 0},
   {"calculate_fxc_spinpaired",
@@ -664,6 +688,7 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
 {
   int xc, x, c; /* functionals identifier number */
   int nspin; /* XC_UNPOLARIZED or XC_POLARIZED  */
+  int on_device = 0;
 
   if (!scratch) {
     scratch = (double*)malloc(LIBXCSCRATCHSIZE*sizeof(double));
@@ -673,8 +698,14 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     scratch_vlapl = (double*)malloc(laplsize);
   }
 
-  if (!PyArg_ParseTuple(args, "iiii", &xc, &x, &c, &nspin)) {
+  if (!PyArg_ParseTuple(args, "iiii|p", &xc, &x, &c, &nspin, &on_device)) {
     return NULL;
+  }
+
+  if ((bool)on_device && !libxc_has_gpu_support())
+  {
+      PyErr_SetString(PyExc_RuntimeError, "Requires Libxc built with GPU support");
+      return NULL;
   }
 
   /* checking if the numbers xc x c are valid is done at python level */
@@ -686,6 +717,8 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     return NULL;
   }
 
+  self->on_device = (bool)on_device;
+
   assert(nspin==XC_UNPOLARIZED || nspin==XC_POLARIZED);
   self->nspin = nspin; /* must be common to x and c, so declared redundantly */
 
@@ -694,7 +727,7 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
   if (xc != -1) {
     xc_family_from_id(xc,&family,&number);
     assert (family != XC_FAMILY_UNKNOWN);
-    XC(func_init)(&self->xc_functional, xc, nspin);
+    initialize_functional(&self->xc_functional, xc, nspin, self->on_device);
     self->functional[0]=&self->xc_functional;
     self->functional[1]=NULL;
   } else {
@@ -703,12 +736,12 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     if (x!=-1) {
       xc_family_from_id(x,&familyx,&number);
       assert (familyx != XC_FAMILY_UNKNOWN);
-      XC(func_init)(&self->x_functional, x, nspin);
+      initialize_functional(&self->x_functional, x, nspin, self->on_device);
     }
     if (c!=-1) {
       xc_family_from_id(c,&familyc,&number);
       assert (familyc != XC_FAMILY_UNKNOWN);
-      XC(func_init)(&self->c_functional, c, nspin);
+      initialize_functional(&self->c_functional, c, nspin, self->on_device);
     }
 
     if (x!=-1 && c!=-1) {

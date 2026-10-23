@@ -17,8 +17,8 @@ static void launch_add_to_density(
     const gpaw::PyDeviceArray& f_sM)
 {
     AddToDensityArrays<T> arrays;
-    arrays.nt_sG = static_cast<T*>(nt_sG.data);
-    arrays.f_sM = static_cast<const T*>(f_sM.data);
+    arrays.nt_sG = static_cast<T*>(nt_sG.data_ptr);
+    arrays.f_sM = static_cast<const T*>(f_sM.data_ptr);
     arrays.num_spins = static_cast<int32_t>(nt_sG.shape[0]);
     arrays.f_sM_first_stride = f_sM.strides[0];
 
@@ -45,8 +45,8 @@ static void launch_construct_density(
 )
 {
     ConstructDensityArrays<T> inputs;
-    inputs.nt_G = static_cast<T*>(nt_G.data);
-    inputs.rho_MM = static_cast<T*>(rho_MM.data);
+    inputs.nt_G = static_cast<T*>(nt_G.data_ptr);
+    inputs.rho_MM = static_cast<T*>(rho_MM.data_ptr);
     inputs.ncols = rho_MM.shape[1];
     inputs.mu_start = mu_start;
     inputs.mu_end = mu_end;
@@ -76,8 +76,8 @@ static void launch_calculate_potential_matrix_phi_pairs(
     }
 
     CalculatePotentialMatrixArrays<T> inputs;
-    inputs.vt_G = static_cast<const T*>(vt_G.data);
-    inputs.V_MN = static_cast<T*>(out_V_MN.data);
+    inputs.vt_G = static_cast<const T*>(vt_G.data_ptr);
+    inputs.V_MN = static_cast<T*>(out_V_MN.data_ptr);
     inputs.mu_start = mu_start;
     inputs.mu_end = mu_end;
     inputs.ncols = out_V_MN.shape[1];
@@ -104,8 +104,8 @@ static void launch_calculate_potential_matrix(
     int64_t mu_end)
 {
     CalculatePotentialMatrixArrays<T> arrays;
-    arrays.vt_G = static_cast<const T*>(vt_G.data);
-    arrays.V_MN = static_cast<T*>(out_V_MN.data);
+    arrays.vt_G = static_cast<const T*>(vt_G.data_ptr);
+    arrays.V_MN = static_cast<T*>(out_V_MN.data_ptr);
     arrays.mu_start = mu_start;
     arrays.mu_end = mu_end;
     arrays.ncols = out_V_MN.shape[1];

@@ -5,7 +5,7 @@ namespace gpaw
 
 
 PyDeviceArray::PyDeviceArray() noexcept
-    : data(nullptr), c_contiguous(false)
+    : data_ptr(nullptr), c_contiguous(false)
 {
 }
 
@@ -23,6 +23,11 @@ PyDeviceArray::PyDeviceArray(pybind11::handle array)
     from_cupy(array);
 }
 
+std::string PyDeviceArray::dtype_name() const
+{
+    return dtype.attr("name").cast<std::string>();
+}
+
 void PyDeviceArray::from_cupy(pybind11::handle array)
 {
     // dtype
@@ -35,11 +40,11 @@ void PyDeviceArray::from_cupy(pybind11::handle array)
     c_contiguous = flags.attr("c_contiguous").cast<bool>();
 
     // Get data pointer
-    data = reinterpret_cast<void*>(
+    data_ptr = reinterpret_cast<void*>(
         array.attr("data").attr("ptr").cast<std::uintptr_t>()
     );
 
-    if (!data)
+    if (!data_ptr)
     {
         // This should always be a bug
         throw std::invalid_argument("Empty Cupy array passed to C++");

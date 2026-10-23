@@ -32,16 +32,46 @@ struct GPAW_HIDDEN_SYMBOL PyDeviceArray
     size_t ndim() const { return shape.size(); }
     bool is_c_contiguous() const { return c_contiguous; }
 
-    void* data = nullptr;
+    /** Access the data pointer as specified type. Throws a runtime_error if the dtype does not match. */
+    template <typename T>
+    T* data() { return data_impl<T>(); }
+
+    /** Access the data pointer as specified type. Throws a runtime_error if the dtype does not match */
+    template <typename T>
+    const T* data() const { return data_impl<T>(); }
+
+    void* data_ptr = nullptr;
     pybind11::dtype dtype;
     bool c_contiguous;
     // Use int64_t for shape/strides for compatibility with standards like dlpack
     std::vector<int64_t> shape;
     std::vector<int64_t> strides;
 
+    // Gets a human-readable name of the dtype
+    std::string dtype_name() const;
+
 private:
     void from_cupy(pybind11::handle array);
     void from_cupy(PyObject* obj) { from_cupy(pybind11::handle(obj)); }
+
+    template <typename T>
+    T* data_impl() const
+    {
+        namespace py = pybind11;
+        using U = std::remove_cv_t<T>;
+        if constexpr (!std::is_void_v<U>)
+        {
+            if (!dtype.is(py::dtype::of<U>()))
+            {
+                const std::string requested_dtype_name = py::str(py::dtype::of<U>()).cast<std::string>();
+                throw std::runtime_error(
+                    "Trying to access data in a device array (dtype = " +
+                    dtype_name() +
+                    ") as non-matching type " + requested_dtype_name);
+            }
+        }
+        return static_cast<T*>(data_ptr);
+    }
 
     // Let pybind11 type caster access private members
     friend class pybind11::detail::type_caster<gpaw::PyDeviceArray>;

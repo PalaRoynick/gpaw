@@ -2,7 +2,7 @@
 #include "spline_gpu_tests_python.hpp"
 #include "radial_spline_gpu.cuh"
 #include "splines/splines_python.hpp"
-#include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
+#include "device_arrays/pybind_cupy_type_caster.hpp"
 #include <vector>
 #include <string>
 
@@ -46,7 +46,7 @@ void launch_evaluate_spline(
     const int blocks = (x.shape[0] + threads - 1) / threads;
 
     launch_kernel(evaluate_spline_kernel<T>, blocks, threads, 0, stream,
-        static_cast<T*>(x.data), static_cast<T*>(out.data), spline, num_x
+        static_cast<T*>(x.data_ptr), static_cast<T*>(out.data_ptr), spline, num_x
     );
 }
 
@@ -97,13 +97,13 @@ public:
 
         // Hacky
         PyDeviceArray out = x;
-        out.data = static_cast<void*>(gpu::Tmalloc<T>(out.shape[0]));
+        out.data_ptr = static_cast<void*>(gpu::Tmalloc<T>(out.shape[0]));
 
         launch_evaluate_spline(x, out, gpu_spline, 0);
 
         // Copy to host
         py::array_t<T> res(out.shape);
-        gpu::Tmemcpy(res.mutable_data(), static_cast<T*>(out.data), (size_t)x.shape[0], gpuMemcpyDeviceToHost);
+        gpu::Tmemcpy(res.mutable_data(), static_cast<T*>(out.data_ptr), (size_t)x.shape[0], gpuMemcpyDeviceToHost);
         return res;
     }
 

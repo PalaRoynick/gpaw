@@ -2,7 +2,7 @@
 #include "gpu_python.h"
 
 #include "pyarray_utils.hpp"
-#include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
+#include "device_arrays/pybind_cupy_type_caster.hpp"
 
 #ifdef GPAW_WITH_MAGMA
     #include "gpu/cpp/magma/magma_python.h"
@@ -41,7 +41,7 @@ static void test_array_metadata(py::handle cupy_array, const PyDeviceArray& same
 
     // Get data pointer
     const std::uintptr_t data = cupy_array.attr("data").attr("ptr").cast<std::uintptr_t>();
-    if (data != reinterpret_cast<uintptr_t>(same_array.data))
+    if (data != reinterpret_cast<uintptr_t>(same_array.data_ptr))
     {
         throw std::runtime_error("data pointer does not match");
     }

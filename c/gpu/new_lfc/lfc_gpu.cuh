@@ -1,5 +1,5 @@
 #pragma once
-#include "gpu/cupy_interface/device_array.hpp"
+#include "device_arrays/device_array.hpp"
 #include "utils.hpp"
 #include "new_lfc/lfc_common.hpp"
 #include "gpu/gpu-runtime.h"  // double3 etc
