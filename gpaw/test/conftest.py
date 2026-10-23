@@ -34,16 +34,6 @@ def execute_in_tmp_path(request, tmp_path_factory):
 
 
 @pytest.fixture(scope='module')
-def set_device():
-    from gpaw.gpu import set_device
-
-    def log(*args, **kwargs):
-        kwargs.pop('parallel', None)
-        print(*args, **kwargs)
-    set_device(log, world)
-
-
-@pytest.fixture(scope='module')
 def dftd3():
     from ase.calculators.dftd3 import PureDFTD3
     try:
@@ -350,6 +340,17 @@ def pytest_configure(config):
             tw._file = devnull
     config.pluginmanager.register(GPAWPlugin(), 'pytest_gpaw')
 
+    # Select the GPU device
+    # The device id is printed in pytest_report_header()
+
+    from gpaw.gpu import cupy_is_fake, set_device
+    if not cupy_is_fake:
+
+        def log(*args, **kwargs):
+            pass
+
+        set_device(log, world)
+
 
 def pytest_runtest_setup(item):
     """Skip some tests.
@@ -402,8 +403,13 @@ def require_real_mpi(_not_world):
 
 
 def pytest_report_header(config, start_path):
+    from gpaw.gpu import cupy_is_fake, device_id
+
     # Use this to add custom information to the pytest printout.
-    yield f'GPAW MPI rank={world.rank}, size={world.size}'
+    msg = f'GPAW MPI rank={world.rank}, size={world.size}'
+    if not cupy_is_fake:
+        msg += f', GPU={device_id}'
+    yield msg
 
     # We want the user to be able to see where gpw files are cached,
     # but the only way to see the cache location is to make a directory
@@ -437,11 +443,6 @@ def no_touch_world(monkeypatch, _not_world):
         # for obj in [mpi.world, ase.parallel.world]:
         for attr in 'comm', 'rank', 'size':
             monkeypatch.delattr(mpi.world, attr)
-
-        # XXX This is pretty brittle wrt. ASE internals
-        # (also requires new ASE master 2025-11-28)
-        import ase.parallel
-        monkeypatch.setattr(ase.parallel.world, 'comm', None)
 
 
 @pytest.fixture(scope='session')

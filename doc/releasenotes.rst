@@ -12,6 +12,12 @@ Git master branch
 
 * Minimum version requirements: Python 3.11, ASE 3.29.0.
 
+* **Breaking change**:
+  The deprecated ``gpaw -P N python SCRIPT`` syntax has been removed.
+  Use the new syntax ``mpiexec -n N gpaw python SCRIPT``
+  or a similar command to run
+  parallel computations, as documented :ref:`in GPAW 26.7.0 <mpichanges>`.
+
 * GPAW compiled extension now requires a C++17 compliant compiler. Support for
   C99 compilation was dropped in the previous release.
 
@@ -33,10 +39,23 @@ Git master branch
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 
+* Implicit solvation calculations should now be used through the new interface,
+  as extensions: ``GPAW(..., extensions=[Solvation(...)])``. The legacy
+  interface is still available via ``gpaw.old.solvation``; in particular, the
+  special Poisson solvers ``ADM12PoissonSolver`` and
+  ``PolarizationPoissonSolver`` have not been ported from the legacy code.
+
 * Implicit solvation calculations are now supported in plane-wave mode, using
-  an updated conjugate-gradient Poisson solver. Add the solvation model
-  through the ``extensions`` keyword; e.g.,
-  ``GPAW(..., extensions=[Solvation(...)])``.
+  an updated conjugate-gradient Poisson solver.
+
+* The solvation extension now has a dipole correction, in both plane-wave
+  and finite-difference modes. A Gaussian-derivative dipole layer is added
+  to the vacuum region, and its potential is solved in the same dielectric
+  as the system, so that the potential is flat at both ends of the cell and
+  both work functions are well-defined. Enable it with
+  ``Solvation(..., dipolelayer=True)``; see the
+  :ref:`solvation dipole documentation<solvation_dipole>`
+  for examples and options.
 
 * New flourine PAW potential added to our :ref:`setup releases`.
   It should be as accurate as the old one but will converge faster with
@@ -54,6 +73,8 @@ Git master branch
   now distribute the density to all cores for netter parallelization of
   the calculation of the Kohn-Sham potential.  Use
   ``parallel={'distribute_density': True}`` to enable this optimization.
+
+* Fixed bug preventing use of SG15-potentials with semi-core states.
 
 
 Version 26.7.0

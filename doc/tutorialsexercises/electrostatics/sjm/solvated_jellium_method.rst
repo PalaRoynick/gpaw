@@ -19,7 +19,7 @@ Keep in mind that the *absolute* potential has to be provided, where the value o
 
 Since SJM utilizes an implicit solvent to screen the field, we will need to specify some solvent parameters as well.
 SJM relies on GPAW's :ref:`continuum_solvent_model` to provide this screening, and any solvation parameters should be fed directly to the calculator, *outside* of the :literal:`sj` dictionary.
-(The SJM calculator is a subclass of the :class:`~gpaw.solvation.calculator.SolvationGPAW` calculator, so any solvation parameters will be passed straight through to SolvationGPAW.)
+(The SJM calculator is a subclass of the SolvationGPAW calculator, so any solvation parameters will be passed straight through to SolvationGPAW.)
 Reasonable values to simulate room-temperature water are used in the script below.
 In practice, since the purpose of the implicit solvent is just to screen the field, the net results---such as binding energies and barrier heights---will be relatively insensitive to the choice of implicit solvent parameters, so long as they are kept consistent.
 Try running the script below to find the number of electrons necessary to equilibrate the work function to 4.2 eV:

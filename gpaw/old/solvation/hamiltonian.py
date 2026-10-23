@@ -4,7 +4,7 @@ from ase.units import Ha
 from gpaw.fd_operators import Gradient
 from gpaw.old.hamiltonian import RealSpaceHamiltonian
 from gpaw.old.logger import indent
-from gpaw.solvation.poisson import WeightedFDPoissonSolver
+from gpaw.old.solvation.poisson import WeightedFDPoissonSolver
 
 
 class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):

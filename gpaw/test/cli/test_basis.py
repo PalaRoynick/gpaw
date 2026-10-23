@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import pathlib
 import shlex
-import subprocess
-import sys
 from collections.abc import Collection
 
 import pytest
 
 from gpaw.setup_data import search_for_file
+from gpaw.cli.main import main
 
 
 @pytest.mark.parametrize(
@@ -36,7 +35,7 @@ def test_gpaw_basis_subcommand(
     """
     Test generating basis-set files with the `gpaw basis` subcommand.
     """
-    cmd = [sys.executable, '-m', 'gpaw', '-T', 'basis']
+    cmd = ['-T', 'basis']
     setup_files = ['H.PBE', 'Cl.PBE']
     if flags is not None:
         cmd.extend(shlex.split(flags))
@@ -47,7 +46,8 @@ def test_gpaw_basis_subcommand(
         for setup in setup_files:
             filename, _ = search_for_file(setup)
             cmd.append(filename)
-    assert not subprocess.run(cmd).returncode
+
+    main(cmd, initialize_globals=False)
     files = {path.name for path in in_tmp_dir.iterdir()}
     assert files == set(expected_outputs)
 
@@ -58,20 +58,20 @@ def test_old_gpaw_basis_tool(
     """
     Test generating basis-set files with the old `gpaw-basis` CLI tool.
     """
+    from gpaw.atom.gpaw_basis import main
     # From atomic species
-    cmd = ['gpaw-basis',
-           '--xc', 'PBE',
+    cmd = ['--xc', 'PBE',
            '--name', 'myfile',
            '--type', 'tzp',
            '--save-setup',
            'H', 'Cl']
-    assert not subprocess.run(cmd).returncode
+    main(cmd)
+
     assert ({path.name for path in in_tmp_dir.iterdir()}
             == {'H.myfile.tzp.basis', 'Cl.myfile.tzp.basis',
                 'H.myfile.PBE', 'Cl.myfile.PBE'})
     # From the generated PAW setups
-    assert not subprocess.run(['gpaw-basis',
-                               'H.myfile.PBE', 'Cl.myfile.PBE']).returncode
+    main(args=['H.myfile.PBE', 'Cl.myfile.PBE'])
     assert ({path.name for path in in_tmp_dir.iterdir()}
             == {'H.myfile.tzp.basis', 'Cl.myfile.tzp.basis',
                 'H.myfile.PBE', 'Cl.myfile.PBE',

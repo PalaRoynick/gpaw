@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 
+from gpaw.old.solvation import SolvationGPAW
 import gpaw.solvation as solv
 
 
@@ -11,6 +12,6 @@ def test_solvation_nan_radius():
     kwargs = solv.get_HW14_water_kwargs()
 
     kwargs['cavity'].effective_potential.atomic_radii = {'H': np.nan}
-    atoms.calc = solv.SolvationGPAW(mode='fd', xc='LDA', h=0.24, **kwargs)
+    atoms.calc = SolvationGPAW(mode='fd', xc='LDA', h=0.24, **kwargs)
     with pytest.raises(ValueError):
         atoms.get_potential_energy()

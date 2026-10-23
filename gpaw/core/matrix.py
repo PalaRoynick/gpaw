@@ -397,7 +397,8 @@ class Matrix(XP):
                [-0.10050378,  1.00503782]])
         """
         S = self.gather()
-        if S is not None:
+        # Skip an empty array (fails for SciPy < 1.14)
+        if S is not None and S.data.size > 0:
             if isinstance(S.data, np.ndarray):
                 if debug:
                     S.data[np.triu_indices(S.shape[0], 1)] = 42.0
@@ -691,6 +692,10 @@ class MatrixDistribution:
                     eigs: np.ndarray,
                     cc: bool = False,
                     limit: int | None = None) -> None:
+        # Skip an empty array (fails for SciPy < 1.14)
+        if H.data.size == 0:
+            return
+
         if cc and np.issubdtype(H.dtype, np.complexfloating):
             np.negative(H.data.imag, H.data.imag)
         if debug:
@@ -1302,3 +1307,47 @@ def mmm_nc(a, b, out, alpha, beta, mmm):
         buf1, buf2 = buf2, buf1
 
     return out
+
+
+_cp_eigvals = None
+
+
+def _get_cp_eigvals():
+    """Return eigvals function for cupy arrays.
+
+    Checked lazily on first use (not at import time) so that the GPU
+    device has already been initialized.
+
+    Reason for this wrapper: cupy.linalg.eigvals is not available
+    everywhere: CuPy < 14 does not have it, and CuPy 14 does not
+    currently support it on the HIP (ROCm) backend.
+    Fall back to computing the eigenvalues with numpy on the host
+    in these cases.
+    """
+    global _cp_eigvals
+    if _cp_eigvals is None:
+        # Cupy < 14 does not have this function
+        if hasattr(cp.linalg, 'eigvals'):
+            try:
+                # Run a short test to check if eigvals is working.
+                # Cupy 14 defines this function but without HIP backend
+                #   -> RuntimeError or NotImplementedError
+                cp.linalg.eigvals(cp.eye(2))
+
+                # Success: We can use cupy eigvals
+                _cp_eigvals = cp.linalg.eigvals
+            except (RuntimeError, NotImplementedError):
+                pass
+
+        if _cp_eigvals is None:
+            # Failure: Fallback to numpy
+            def _cp_eigvals(a):
+                return cp.asarray(np.linalg.eigvals(a.get()))
+    return _cp_eigvals
+
+
+def eigvals(a):
+    if isinstance(a, np.ndarray):
+        return np.linalg.eigvals(a)
+    else:
+        return _get_cp_eigvals()(a)

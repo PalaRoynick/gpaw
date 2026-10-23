@@ -291,9 +291,9 @@ def get_urls(source):
     elif source == 'sg15':
         # We want sg15_oncv_2015-10-07.tar.gz, but they may upload
         # newer files, too.
-        pattern = (r'<a\s*href=[^>]+>\s*'
+        pattern = (r'<a\s*href="'
                    r'(sg15_oncv_upf_\d\d\d\d-\d\d-\d\d.tar.gz)'
-                   r'\s*</a>')
+                   r'">')
 
         with urlopen_nocertcheck(page) as response:
             txt = response.read().decode('ascii', errors='replace')
