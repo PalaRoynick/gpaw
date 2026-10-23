@@ -3,7 +3,6 @@ from ase import Atoms
 
 from gpaw import GPAW, FermiDirac, PoissonSolver
 from gpaw.test import calculate_numerical_forces
-from gpaw.xc.tools import vxc
 
 
 def test_generic_8Si():
