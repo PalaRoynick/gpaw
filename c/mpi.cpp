@@ -271,6 +271,10 @@ static void mpi_ensure_initialized(void)
 
 static void mpi_dealloc(MPIObject *obj)
 {
+    // Run weakref callbacks before
+    // the communicator is freed:
+    if (obj->weakreflist != NULL)
+        PyObject_ClearWeakRefs((PyObject *) obj);
     if (obj->comm != MPI_COMM_WORLD)
 	MPI_Comm_free(&(obj->comm));
     Py_XDECREF(obj->parent);
@@ -1245,6 +1249,7 @@ static PyObject *NewMPIObject(PyTypeObject* type, PyObject *args,
     MPI_Comm_size(MPI_COMM_WORLD, &(self->size));
     MPI_Comm_rank(MPI_COMM_WORLD, &(self->rank));
     self->comm = MPI_COMM_WORLD;
+    self->weakreflist = NULL;
     Py_INCREF(Py_None);
     self->parent = Py_None;
     self->members = (int*) malloc(self->size*sizeof(int));
@@ -1293,7 +1298,7 @@ PyTypeObject MPIType = {
   0,                         /*tp_traverse*/
   0,                         /*tp_clear*/
   0,                         /*tp_richcompare*/
-  0,                         /*tp_weaklistoffset*/
+  offsetof(MPIObject, weakreflist), /*tp_weaklistoffset*/
   0,                         /*tp_iter*/
   0,                         /*tp_iternext*/
   mpi_methods,               /*tp_methods*/
@@ -1386,6 +1391,7 @@ static PyObject * MPICommunicator(MPIObject *self, PyObject *args)
       MPI_Comm_size(comm, &(obj->size));
       MPI_Comm_rank(comm, &(obj->rank));
       obj->comm = comm;
+      obj->weakreflist = NULL;
       if (obj->parent == Py_None)
 	Py_DECREF(obj->parent);
       obj->members = (int*) malloc(obj->size*sizeof(int));
