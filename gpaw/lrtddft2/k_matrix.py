@@ -10,7 +10,9 @@ from gpaw.utilities import pack_density
 
 
 class Kmatrix:
-    def __init__(self, ks_singles, xc, deriv_scale=1e-5):
+    def __init__(
+        self, ks_singles, xc, deriv_scale=1e-5, analytic_fxc=False, triplet=False
+    ):
         self.basefilename = ks_singles.basefilename
         self.ks_singles = ks_singles
         self.lr_comms = self.ks_singles.lr_comms
@@ -24,8 +26,22 @@ class Kmatrix:
 
         self.dVxct_gip_2 = None  # temporary for finite difference
 
+        # analytic (machine-generated) fxc pair coefficients instead of
+        # the finite-difference pair potential; adds the meta-GGA tau
+        # channel, which the finite-difference route cannot see
+        self.analytic_fxc = analytic_fxc
+        self._afxc = None  # lazy setup state
+        self._wtau_gip = None  # tau-channel coefficient field of row ip
+
+        # triplet (spin-flip) coupling matrix for a closed-shell
+        # reference: no Hartree term, and the XC kernel is the
+        # spin-adapted triplet combination (analytic path only)
+        self.triplet = triplet
+        if triplet and not analytic_fxc:
+            raise NotImplementedError("triplet coupling requires analytic_fxc=True")
+
         # for pros!!!
-        self.fH_pre = 1.0
+        self.fH_pre = 0.0 if triplet else 1.0
         self.fxc_pre = 1.0
 
     def initialize(self):
@@ -37,29 +53,27 @@ class Kmatrix:
         # root reads and then broadcasts
         data = None
         if self.lr_comms.parent_comm.rank == 0:
-            data = ''
-            ready_files = glob.glob(self.basefilename + '.ready_rows.*')
+            data = ""
+            ready_files = glob.glob(self.basefilename + ".ready_rows.*")
             for ready_file in ready_files:
                 if os.path.isfile(ready_file):
-                    with open(ready_file, 'r', 1024 * 1024) as fd:
+                    with open(ready_file, "r", 1024 * 1024) as fd:
                         data += fd.read()
 
-        data = gpaw.mpi.broadcast_string(data,
-                                         root=0,
-                                         comm=self.lr_comms.parent_comm)
+        data = gpaw.mpi.broadcast_string(data, root=0, comm=self.lr_comms.parent_comm)
         for line in data.splitlines():
             line = line.split()
             self.ready_indices.append([int(line[0]), int(line[1])])
 
     def read_values(self):
-        """ Read K-matrix (not the Casida form) ready for 2D ScaLapack array"""
+        """Read K-matrix (not the Casida form) ready for 2D ScaLapack array"""
         # nrow = len(self.ks_singles.kss_list)  # total rows
         nlrow = 0  # local rows
         nlcol = 0  # local cols
 
         # Create indexing
         self.lr_comms.index_map = {}  # (i,p) to matrix index map
-        for (ip, kss) in enumerate(self.ks_singles.kss_list):
+        for ip, kss in enumerate(self.ks_singles.kss_list):
             self.lr_comms.index_map[(kss.occ_ind, kss.unocc_ind)] = ip
             if self.lr_comms.get_local_eh_index(ip) is not None:
                 nlrow += 1
@@ -75,21 +89,19 @@ class Kmatrix:
 
         # self.timer.start('Read K-matrix')
         # Read ALL ready_rows files but on different processors
-        for (k,
-             K_fn) in enumerate(glob.glob(self.basefilename + '.K_matrix.*')):
+        for k, K_fn in enumerate(glob.glob(self.basefilename + ".K_matrix.*")):
             # read every "parent comm size"th file, starting from
             # parent comm rank
-            if (k % self.lr_comms.parent_comm.size !=
-                self.lr_comms.parent_comm.rank):
+            if k % self.lr_comms.parent_comm.size != self.lr_comms.parent_comm.rank:
                 continue
 
             # for each file
-            with open(K_fn, 'r', 1024 * 1024) as fd:
+            with open(K_fn, "r", 1024 * 1024) as fd:
                 lines = fd.read().splitlines()
             for line in lines:
                 # self.timer.start('Read K-matrix: elem')
-                if line[0] == '#':
-                    if line.startswith('# K-matrix file'):
+                if line[0] == "#":
+                    if line.startswith("# K-matrix file"):
                         self.file_format = 1
                     continue
 
@@ -109,9 +121,10 @@ class Kmatrix:
 
                 # where to send
                 # self.timer.start('Read K-matrix: line')
-                (proc, ehproc, ddproc, lip,
-                 ljq) = self.lr_comms.get_matrix_elem_proc_and_index(ip, jq)
-                elem_lists[proc].append(line + '\n')
+                (proc, ehproc, ddproc, lip, ljq) = (
+                    self.lr_comms.get_matrix_elem_proc_and_index(ip, jq)
+                )
+                elem_lists[proc].append(line + "\n")
                 # self.timer.stop('Read K-matrix: line')
 
                 if ip == jq:
@@ -119,14 +132,15 @@ class Kmatrix:
 
                 # where to send transposed
                 # self.timer.start('Read K-matrix: line')
-                (proc, ehproc, ddproc, lip,
-                 ljq) = self.lr_comms.get_matrix_elem_proc_and_index(jq, ip)
-                elem_lists[proc].append(line + '\n')
+                (proc, ehproc, ddproc, lip, ljq) = (
+                    self.lr_comms.get_matrix_elem_proc_and_index(jq, ip)
+                )
+                elem_lists[proc].append(line + "\n")
                 # self.timer.stop('Read K-matrix: line')
 
         # self.timer.start('Read K-matrix: join')
         for proc in range(self.lr_comms.parent_comm.size):
-            elem_lists[proc] = ''.join(elem_lists[proc])
+            elem_lists[proc] = "".join(elem_lists[proc])
         # self.timer.stop('Read K-matrix: join')
 
         # print self.parent_comm.rank, '- elem_lists -'
@@ -137,16 +151,16 @@ class Kmatrix:
         self.lr_comms.parent_comm.barrier()
         # self.timer.stop('Read K-matrix')
 
-        self.file_format = self.lr_comms.parent_comm.max_scalar(
-            self.file_format)
+        self.file_format = self.lr_comms.parent_comm.max_scalar(self.file_format)
 
         # send and receive elem_list
         # self.timer.start('Communicate K-matrix')
         alltoall_dict = gpaw.mpi.alltoallv_string(
-            elem_lists, comm=self.lr_comms.parent_comm)
+            elem_lists, comm=self.lr_comms.parent_comm
+        )
         # ready for garbage collection
         del elem_lists
-        local_elem_list = ''.join(alltoall_dict.values())
+        local_elem_list = "".join(alltoall_dict.values())
         # ready for garbage collection
         del alltoall_dict
 
@@ -180,7 +194,7 @@ class Kmatrix:
             jq = self.lr_comms.index_map.get(jqkey)
 
             # if not in index map, ignore
-            if (ip is None or jq is None):
+            if ip is None or jq is None:
                 continue
 
             kss_ip = self.ks_singles.kss_list[ip]
@@ -195,10 +209,16 @@ class Kmatrix:
                     K_matrix[lip, ljq] = Kvalue
                 elif self.file_format == 0:
                     K_matrix[lip, ljq] = Kvalue / (
-                        2. * np.sqrt(kss_ip.energy_diff * kss_jq.energy_diff *
-                                     kss_ip.pop_diff * kss_jq.pop_diff))
+                        2.0
+                        * np.sqrt(
+                            kss_ip.energy_diff
+                            * kss_jq.energy_diff
+                            * kss_ip.pop_diff
+                            * kss_jq.pop_diff
+                        )
+                    )
                 else:
-                    raise RuntimeError('Invalid K-matrix file format')
+                    raise RuntimeError("Invalid K-matrix file format")
 
             # if (jq,ip) on this proc
             ljq = self.lr_comms.get_local_eh_index(jq)
@@ -209,18 +229,23 @@ class Kmatrix:
                     K_matrix[ljq, lip] = Kvalue
                 elif self.file_format == 0:
                     K_matrix[ljq, lip] = Kvalue / (
-                        2. * np.sqrt(kss_ip.energy_diff * kss_jq.energy_diff *
-                                     kss_ip.pop_diff * kss_jq.pop_diff))
+                        2.0
+                        * np.sqrt(
+                            kss_ip.energy_diff
+                            * kss_jq.energy_diff
+                            * kss_ip.pop_diff
+                            * kss_jq.pop_diff
+                        )
+                    )
                 else:
-                    raise RuntimeError('Invalid K-matrix file format')
+                    raise RuntimeError("Invalid K-matrix file format")
 
         # ready for garbage collection
         del local_elem_list
 
         # If any NaNs found, we did not read all matrix elements... BAD
         if np.isnan(np.sum(np.sum(K_matrix))):
-            raise RuntimeError(
-                'Not all required K-matrix elements could be found.')
+            raise RuntimeError("Not all required K-matrix elements could be found.")
 
         self.values = K_matrix
 
@@ -233,7 +258,7 @@ class Kmatrix:
         # Loop over all transitions
         self.K_matrix_ready = True  # mark done... if not, it's changed
         nrows = 0  # number of rows for timings
-        for (ip, kss_ip) in enumerate(self.ks_singles.kss_list):
+        for ip, kss_ip in enumerate(self.ks_singles.kss_list):
             i = kss_ip.occ_ind
             p = kss_ip.unocc_ind
 
@@ -258,19 +283,28 @@ class Kmatrix:
         #######################################################################
         # saving CORRECT K-matrix, not its "Casida form" like in alpha version
         #######################################################################
-        Kfn = self.basefilename + '.K_matrix.' + '%06dof%06d' % (
-            self.lr_comms.eh_comm.rank, self.lr_comms.eh_comm.size)
-        rrfn = self.basefilename + '.ready_rows.' + '%06dof%06d' % (
-            self.lr_comms.eh_comm.rank, self.lr_comms.eh_comm.size)
-        logfn = self.basefilename + '.log.' + '%06dof%06d' % (
-            self.lr_comms.eh_comm.rank, self.lr_comms.eh_comm.size)
+        Kfn = (
+            self.basefilename
+            + ".K_matrix."
+            + "%06dof%06d" % (self.lr_comms.eh_comm.rank, self.lr_comms.eh_comm.size)
+        )
+        rrfn = (
+            self.basefilename
+            + ".ready_rows."
+            + "%06dof%06d" % (self.lr_comms.eh_comm.rank, self.lr_comms.eh_comm.size)
+        )
+        logfn = (
+            self.basefilename
+            + ".log."
+            + "%06dof%06d" % (self.lr_comms.eh_comm.rank, self.lr_comms.eh_comm.size)
+        )
 
         # Open only on dd_comm root
         if self.lr_comms.dd_comm.rank == 0:
-            self.Kfile = open(Kfn, 'a+')
-            self.ready_file = open(rrfn, 'a+')
-            self.log_file = open(logfn, 'a+')
-            self.Kfile.write('# K-matrix file\n')
+            self.Kfile = open(Kfn, "a+")
+            self.ready_file = open(rrfn, "a+")
+            self.log_file = open(logfn, "a+")
+            self.Kfile.write("# K-matrix file\n")
 
         self.poisson = self.calc.hamiltonian.poisson
 
@@ -282,12 +316,10 @@ class Kmatrix:
         dnt_gjq = self.calc.density.finegd.empty()
         drhot_gjq = self.calc.density.finegd.empty()
 
-        self.nt_g = self.calc.density.finegd.zeros(
-            self.calc.density.nt_sg.shape[0])
+        self.nt_g = self.calc.density.finegd.zeros(self.calc.density.nt_sg.shape[0])
 
         dVht_gip = self.calc.density.finegd.empty()
-        dVxct_gip = self.calc.density.finegd.zeros(
-            self.calc.density.nt_sg.shape[0])
+        dVxct_gip = self.calc.density.finegd.zeros(self.calc.density.nt_sg.shape[0])
 
         # self.timer.stop('Initialize')
         # Init ETA
@@ -295,8 +327,7 @@ class Kmatrix:
 
         #################################################################
         # Outer loop over KS singles
-        for (ip, kss_ip) in enumerate(self.ks_singles.kss_list):
-
+        for ip, kss_ip in enumerate(self.ks_singles.kss_list):
             # if not mine, skip it
             if self.lr_comms.get_local_eh_index(ip) is None:
                 continue
@@ -310,9 +341,14 @@ class Kmatrix:
                 # add 21% extra time (1.1**2 = 1.21)
                 eta = self.matrix_eta.eta((nrows + 1) * 1.1)
                 self.log_file.write(
-                    'Calculating pair %5d => %5d  ( %s, ETA %9.1lfs )\n' %
-                    (kss_ip.occ_ind, kss_ip.unocc_ind,
-                     str(datetime.datetime.now()), eta))
+                    "Calculating pair %5d => %5d  ( %s, ETA %9.1lfs )\n"
+                    % (
+                        kss_ip.occ_ind,
+                        kss_ip.unocc_ind,
+                        str(datetime.datetime.now()),
+                        eta,
+                    )
+                )
                 self.log_file.flush()
 
             # Pair density
@@ -331,14 +367,17 @@ class Kmatrix:
             # self.timer.stop('Poisson')
 
             # smooth XC "pair" potential
-            self.calculate_smooth_xc_pair_potential(kss_ip, dnt_gip, dVxct_gip)
+            if self.analytic_fxc:
+                self.calculate_analytic_xc_pair_potential(kss_ip, dnt_gip, dVxct_gip)
+            else:
+                self.calculate_smooth_xc_pair_potential(kss_ip, dnt_gip, dVxct_gip)
             # paw term of XC "pair" potential
             I_asp = self.calculate_paw_xc_pair_potentials(kss_ip)
 
             #################################################################
             # Inner loop over KS singles
             K = []  # storage for row before writing to file
-            for (jq, kss_jq) in enumerate(self.ks_singles.kss_list):
+            for jq, kss_jq in enumerate(self.ks_singles.kss_list):
                 i = kss_ip.occ_ind
                 p = kss_ip.unocc_ind
                 j = kss_jq.occ_ind
@@ -364,10 +403,20 @@ class Kmatrix:
 
                 # Hartree smooth part, RHOT_JQ HERE???
                 Ig += self.fH_pre * self.calc.density.finegd.integrate(
-                    dVht_gip, drhot_gjq)
+                    dVht_gip, drhot_gjq
+                )
                 # XC smooth part
                 Ig += self.fxc_pre * self.calc.density.finegd.integrate(
-                    dVxct_gip, dnt_gjq)
+                    dVxct_gip, dnt_gjq
+                )
+                # meta-GGA tau channel: the tau-coefficient field of
+                # row ip contracted with the kinetic-energy pair
+                # density of column jq (absent for LDA/GGA and in the
+                # finite-difference route)
+                if self._wtau_gip is not None:
+                    Ig += self.fxc_pre * self.calc.density.finegd.integrate(
+                        self._wtau_gip, self.pair_ked(kss_jq)
+                    )
                 # self.timer.stop('Integrate')
 
                 # Atomic corrections
@@ -389,16 +438,15 @@ class Kmatrix:
             # self.timer.start('Write K')
             # Write only on dd_comm root
             if self.lr_comms.dd_comm.rank == 0:
-
                 # Write only lower triangle of K-matrix
                 for [i, p, j, q, Kipjq] in K:
-                    self.Kfile.write("%5d %5d %5d %5d %22.16lf\n" %
-                                     (i, p, j, q, Kipjq[0]))
+                    self.Kfile.write(
+                        "%5d %5d %5d %5d %22.16lf\n" % (i, p, j, q, Kipjq[0])
+                    )
                 self.Kfile.flush()  # flush K-matrix before ready_rows
 
                 # Write and flush ready rows
-                self.ready_file.write("%d %d\n" %
-                                      (kss_ip.occ_ind, kss_ip.unocc_ind))
+                self.ready_file.write("%d %d\n" % (kss_ip.occ_ind, kss_ip.unocc_ind))
                 self.ready_file.flush()
 
             # self.timer.stop('Write K')
@@ -417,9 +465,10 @@ class Kmatrix:
     def calculate_smooth_xc_pair_potential(self, kss_ip, dnt_gip, dVxct_gip):
         # Smooth xc potential
         # (finite difference approximation from xc-potential)
-        if (self.dVxct_gip_2 is None):
+        if self.dVxct_gip_2 is None:
             self.dVxct_gip_2 = self.calc.density.finegd.zeros(
-                self.calc.density.nt_sg.shape[0])
+                self.calc.density.nt_sg.shape[0]
+            )
         dVxct_gip_2 = self.dVxct_gip_2
 
         s = kss_ip.spin_ind
@@ -439,8 +488,190 @@ class Kmatrix:
         dVxct_gip -= dVxct_gip_2
         # finite difference approx for fxc
         # vxc = (vxc+ - vxc-) / 2h
-        dVxct_gip *= 1. / (2. * self.deriv_scale)
+        dVxct_gip *= 1.0 / (2.0 * self.deriv_scale)
         # self.timer.stop('Smooth XC')
+
+    def _analytic_setup(self):
+        """Ground-state fields and Libxc derivative arrays for the
+        machine-generated analytic fxc pair coefficients."""
+        import pylibxc
+        from gpaw.fd_operators import Gradient
+
+        from gpaw.xckernel_fxc import (
+            fxc_pair_coefficients_lda,
+            fxc_pair_coefficients_gga,
+            fxc_pair_coefficients_mgga_tau,
+        )
+
+        density = self.calc.density
+        if density.nt_sg.shape[0] != 1:
+            raise NotImplementedError("analytic fxc: spin-paired only")
+        finegd = density.finegd
+
+        LIBXC = {
+            "LDA": ("lda", "LDA_X+LDA_C_PW"),
+            "PBE": ("gga", "GGA_X_PBE+GGA_C_PBE"),
+            "TPSS": ("mgga_tau", "MGGA_X_TPSS+MGGA_C_TPSS"),
+            "r2SCAN": ("mgga_tau", "MGGA_X_R2SCAN+MGGA_C_R2SCAN"),
+        }
+        name = self.xc.name
+        if name in LIBXC:
+            family, ids = LIBXC[name]
+        elif name.startswith(("MGGA_", "GGA_", "LDA_")):
+            family = {"M": "mgga_tau", "G": "gga", "L": "lda"}[name[0]]
+            ids = name
+        else:
+            raise ValueError(f"no libxc mapping for fxc name {name!r}")
+        if self.triplet:
+            from gpaw.xckernel_fxc import (
+                fxc_pair_coefficients_lda_triplet,
+                fxc_pair_coefficients_gga_triplet,
+                fxc_pair_coefficients_mgga_tau_triplet,
+            )
+
+            fn = {
+                "lda": fxc_pair_coefficients_lda_triplet,
+                "gga": fxc_pair_coefficients_gga_triplet,
+                "mgga_tau": fxc_pair_coefficients_mgga_tau_triplet,
+            }[family]
+        else:
+            fn = {
+                "lda": fxc_pair_coefficients_lda,
+                "gga": fxc_pair_coefficients_gga,
+                "mgga_tau": fxc_pair_coefficients_mgga_tau,
+            }[family]
+
+        grad_fine = [Gradient(finegd, v, n=2).apply for v in range(3)]
+        wfs = self.calc.wfs
+        grad_coarse = [
+            Gradient(wfs.gd, v, n=3, dtype=wfs.dtype).apply for v in range(3)
+        ]
+
+        nt = np.maximum(density.nt_sg[0], 1e-10)
+        gradn = None
+        if family != "lda":
+            gradn = np.zeros((3,) + nt.shape)
+            for v, g in enumerate(grad_fine):
+                g(density.nt_sg[0], gradn[v])
+        taut_g = None
+        if family == "mgga_tau":
+            taut_sG = wfs.calculate_kinetic_energy_density()
+            taut_g = finegd.empty()
+            density.interpolator.apply(taut_sG[0], taut_g)
+
+        if self.triplet:
+            # spin-adapted triplet kernel: polarized Libxc arrays at
+            # the spin-compensated point; all fields alpha-channel
+            npts = nt.size
+            ops = {}
+            if gradn is not None:
+                for v, ax in enumerate("xyz"):
+                    ops[f"grad_rho_a_{ax}"] = gradn[v] / 2
+            if taut_g is not None:
+                ops["tau_a"] = taut_g / 2
+            half = (nt / 2).ravel()
+            inp = {"rho": np.stack([half, half], axis=-1)}
+            if gradn is not None:
+                q = ((gradn**2).sum(axis=0) / 4).ravel()
+                inp["sigma"] = np.stack([q, q, q], axis=-1)
+            if taut_g is not None:
+                th = (taut_g / 2).ravel()
+                inp["tau"] = np.stack([th, th], axis=-1)
+            for fid in ids.split("+"):
+                f = pylibxc.LibXCFunctional(fid, "polarized")
+                r = f.compute(inp, do_exc=False, do_vxc=True, do_fxc=True)
+                for k, v in r.items():
+                    v = v.reshape(npts, -1)
+                    for c in range(v.shape[1]):
+                        key = f"{k}_{c}"
+                        ops[key] = ops.get(key, 0) + v[:, c].reshape(nt.shape)
+        else:
+            ops = {"rho": nt}
+            if gradn is not None:
+                for v, ax in enumerate("xyz"):
+                    ops[f"grad_rho_{ax}"] = gradn[v]
+                ops["sigma"] = (gradn**2).sum(axis=0)
+            if taut_g is not None:
+                ops["tau"] = taut_g
+            inp = {"rho": ops["rho"].ravel()}
+            if family != "lda":
+                inp["sigma"] = ops["sigma"].ravel()
+            if family == "mgga_tau":
+                inp["tau"] = ops["tau"].ravel()
+            for fid in ids.split("+"):
+                f = pylibxc.LibXCFunctional(fid, "unpolarized")
+                r = f.compute(inp, do_exc=False, do_vxc=True, do_fxc=True)
+                for k, v in r.items():
+                    v = v.reshape(v.shape[0], -1).T.squeeze()
+                    ops[k] = ops.get(k, 0) + v.reshape(nt.shape)
+
+        self._afxc = {
+            "family": family,
+            "fn": fn,
+            "ops": ops,
+            "grad_fine": grad_fine,
+            "grad_coarse": grad_coarse,
+            "shape": nt.shape,
+        }
+
+    def pair_ked(self, kss):
+        """Kinetic-energy pair density 1/2 grad psi_i . grad psi_p of a
+        KS single, interpolated to the fine grid."""
+        wfs = self.calc.wfs
+        kpt = wfs.kpt_u[kss.kpt_ind]
+        psi_i = kpt.psit_nG[kss.occ_ind]
+        psi_p = kpt.psit_nG[kss.unocc_ind]
+        gd = wfs.gd
+        tmp1, tmp2 = gd.empty(), gd.empty()
+        ked_G = gd.zeros()
+        for g in self._afxc["grad_coarse"]:
+            g(psi_i, tmp1)
+            g(psi_p, tmp2)
+            ked_G += 0.5 * tmp1 * tmp2
+        ked_g = self.calc.density.finegd.empty()
+        self.calc.density.interpolator.apply(ked_G, ked_g)
+        return ked_g
+
+    def calculate_analytic_xc_pair_potential(self, kss_ip, dnt_gip, dVxct_gip):
+        """Analytic fxc pair coefficients from the machine-generated
+        kernels (xckernel): the local channel u - div(v) goes into
+        dVxct_gip; the meta-GGA tau-channel coefficient field is kept
+        for contraction with the inner pair's kinetic-energy density."""
+        if self._afxc is None:
+            self._analytic_setup()
+        a = self._afxc
+        ops = dict(a["ops"])
+        p1 = "_a_p1" if self.triplet else "_p1"
+        scale = 0.5 if self.triplet else 1.0
+        ops[f"rho{p1}"] = dnt_gip * scale
+        if a["family"] != "lda":
+            dgrad = np.zeros((3,) + a["shape"])
+            for v, g in enumerate(a["grad_fine"]):
+                g(dnt_gip, dgrad[v])
+            for v, ax in enumerate("xyz"):
+                ops[f"grad_rho{p1}_{ax}"] = dgrad[v] * scale
+        if a["family"] == "mgga_tau":
+            ops[f"tau{p1}"] = self.pair_ked(kss_ip) * scale
+
+        ch = a["fn"](ops)
+        pot = np.ascontiguousarray(np.broadcast_to(ch["rho"], a["shape"]).copy())
+        tmp = np.empty(a["shape"])
+        for v, g in enumerate(a["grad_fine"]):
+            gv = ch["grad"][v]
+            if np.ndim(gv) == 0:  # LDA: no vector channel
+                continue
+            g(np.ascontiguousarray(gv), tmp)
+            pot -= tmp
+        # triplet: the channels are derivatives with respect to the
+        # ALPHA pair fields (half the full pair density), so the
+        # contraction with FULL pair densities carries another 1/2
+        pot *= scale
+        dVxct_gip[:] = 0.0
+        dVxct_gip[kss_ip.spin_ind][:] = pot
+        wtau = ch.get("tau")
+        self._wtau_gip = (
+            np.ascontiguousarray(wtau) * scale if wtau is not None else None
+        )
 
     def calculate_paw_xc_pair_potentials(self, kss_ip):
         # XC corrections
@@ -460,20 +691,37 @@ class Kmatrix:
             Dip_ii = np.outer(Pip_ni[i], Pip_ni[p])
             Dip_p = pack_density(Dip_ii)
 
+            if self.triplet:
+                # spin-flip channel: antisymmetric two-spin perturbation
+                # of the spin-compensated atomic density matrix; the
+                # pair potential is the alpha-beta difference, and two
+                # factors 1/2 map the alpha-channel derivative onto the
+                # FULL pair density matrices contracted downstream
+                h = self.deriv_scale
+                D_p = self.calc.density.D_asp[a][kss_ip.spin_ind]
+                Dp2 = np.array([D_p / 2 + h * Dip_p / 2, D_p / 2 - h * Dip_p / 2])
+                Dm2 = np.array([D_p / 2 - h * Dip_p / 2, D_p / 2 + h * Dip_p / 2])
+                Ip2 = np.zeros_like(Dp2)
+                Im2 = np.zeros_like(Dm2)
+                self.xc.calculate_paw_correction(self.calc.wfs.setups[a], Dp2, Ip2)
+                self.xc.calculate_paw_correction(self.calc.wfs.setups[a], Dm2, Im2)
+                I_asp[a] = (((Ip2[0] - Ip2[1]) - (Im2[0] - Im2[1])) / (2 * h) / 4)[
+                    np.newaxis
+                ]
+                continue
+
             # finite difference plus
             D_sp = self.calc.density.D_asp[a].copy()
             D_sp[kss_ip.spin_ind] += self.deriv_scale * Dip_p
-            self.xc.calculate_paw_correction(self.calc.wfs.setups[a], D_sp,
-                                             I_sp)
+            self.xc.calculate_paw_correction(self.calc.wfs.setups[a], D_sp, I_sp)
 
             # finite difference minus
             D_sp_2 = self.calc.density.D_asp[a].copy()
             D_sp_2[kss_ip.spin_ind] -= self.deriv_scale * Dip_p
-            self.xc.calculate_paw_correction(self.calc.wfs.setups[a], D_sp_2,
-                                             I_sp_2)
+            self.xc.calculate_paw_correction(self.calc.wfs.setups[a], D_sp_2, I_sp_2)
 
             # finite difference
-            I_asp[a] = (I_sp - I_sp_2) / (2. * self.deriv_scale)
+            I_asp[a] = (I_sp - I_sp_2) / (2.0 * self.deriv_scale)
 
         # self.timer.stop('Atomic XC')
 
