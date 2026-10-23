@@ -195,11 +195,16 @@ class DFTComponentsBuilder:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         size_c = self.calculate_number_of_grid_points()
-        self.distributed_density = (
-            params.parallel.get('distribute_density', True) and
-            xcfunc.name not in {'QNA', 'TB09'} and
-            self.communicators['d'].size < comm.size and
-            np.prod(size_c) / comm.size >= 8**3)
+
+        self.distributed_density = params.parallel.get('distribute_density',
+                                                       '_MISSING')
+        if self.distributed_density == '_MISSING':
+            self.distributed_density = (
+                xcfunc.name not in {'QNA', 'TB09'} and
+                np.prod(size_c) / comm.size >= 8**3)
+
+        if self.communicators['d'].size == comm.size:
+            self.distributed_density = False  # already fully distributed
 
         if self.distributed_density:
             self.communicators['x'] = self.communicators['w']

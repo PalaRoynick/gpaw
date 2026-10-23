@@ -749,10 +749,12 @@ class DFT:
         if not isinstance(self.ibzwfs, LCAOIBZWaveFunctions):
             raise ValueError
         self.params.mode = Mode.from_param(mode)
+        self.params.parallel['distribute_density'] = self.pot_calc.distributed_density
         builder = self.params.dft_component_builder(
             self.atoms, log=self.log, comm=self.comm)
         self.scf_loop = builder.create_scf_loop()
         self.pot_calc = builder.create_potential_calculator()
+
         if builder.mode == 'pw':
             self.density.nct_aX = builder.get_pseudo_core_densities()
             self.density.tauct_aX = builder.get_pseudo_core_ked()
