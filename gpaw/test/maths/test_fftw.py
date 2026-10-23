@@ -13,8 +13,10 @@ n1, n2, n3 = 8, 6, 12
 
 def check(Plans, flags, dtype):
     t0 = time.time()
+    tmp = Plans._overwrite_flags
     Plans._overwrite_flags = flags  # Hack to avoid the test overwrite
     plan = Plans((n1, n2, n3), dtype=dtype, blocksize=blocksize)
+    Plans._overwrite_flags = tmp  # Restore the value
     t1 = time.time()
     t = 0.0
     for i in range(N):
