@@ -87,8 +87,6 @@ class FFTMetric(BaseMetric):
         ekin_G = self.xp.asarray(self.pw.ekin_G)
         self.w_G = self.sigma / self.weight * \
             (self.weight + ekin_G) / (self.sigma + ekin_G)
-        self.w_inv_G = \
-            (self.sigma + ekin_G) / (self.weight ** 0.5 + ekin_G) - 1
 
     def apply(self,
               w_G,
@@ -119,9 +117,9 @@ class FFTMetric(BaseMetric):
 
     def inv(self, n_sX: XArray,
             out: XArray | None = None) -> XArray:
-        out = self.apply(w_G=self.w_inv_G, n_sX=n_sX, out=out)
-        out.data += n_sX.data
-        out.data *= self.weight ** 0.5
+        out = self.apply(w_G=self.w_G, n_sX=n_sX, out=out)
+        out.data[0] *= -1
+        out.data[0] += n_sX.data[0]
         return out
 
     def __str__(self) -> str:
