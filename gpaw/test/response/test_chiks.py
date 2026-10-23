@@ -196,7 +196,8 @@ def test_chiks(in_tmp_dir, gpw_files, mpi, system, qrel, gammacentered):
     # ---------- Script ---------- #
 
     # Part 1: Set up ChiKSTestingFactory
-    calc = mpi.GPAW(gpw_files[wfs], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files[wfs],
+                    parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff[wfs]
 
     chiks_testing_factory = ChiKSTestingFactory(calc,
@@ -352,7 +353,8 @@ def test_xi(gpw_files, mpi, system, qrel, gammacentered):
 
     # ---------- Script ---------- #
 
-    calc = mpi.GPAW(gpw_files[wfs], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files[wfs],
+                    parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
 
     xi_mzGG = []

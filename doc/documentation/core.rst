@@ -137,6 +137,35 @@ object:
   * backwards compatibility and deprecation warnings
 
 
+Parallelization
+===============
+
+The builder object has a ``.communicators`` attribute which is a
+dictionary mapping one-charcter strings to MPI-communicators:
+
+==========  =====================================  ==================
+short name  description                            variable name
+==========  =====================================  ==================
+``'d'``     domain (potential and wave functions)  ``'domain_comm'``!
+``'b'``     bands                                  ``'band_comm'``
+``'k'``     **k**-points/spins                     ``'kpt_comm'``
+``'w'``     MPI-world                              ``'comm'``
+``'x'``     domain (density)                       ``'domain_comm'``!
+==========  =====================================  ==================
+
+We also have the upper case names D, B, K, W and X for the complementary
+communicators:
+
+==========  ===============================
+short name  variable name
+==========  ===============================
+``'D'``     ``'kpt_band_comm'``
+``'B'``
+``'K'``     ``'domain_band_comm'``
+``'X'``     ``'domain_complementary_comm'``
+==========  ===============================
+
+
 Naming convention for arrays
 ============================
 

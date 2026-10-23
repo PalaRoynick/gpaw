@@ -80,3 +80,7 @@ def test_new_cell_1d(gpu):
         [7.51550293e-02] * 2 + [-1.05616472e-01, 0.0, 0.0, 0.0], abs=5e-5)
     out = broadcast_string(output.getvalue() or None)
     assert 'Interpolating wave fun' in out
+
+
+if __name__ == '__main__':
+    test_new_cell_1d(not False)

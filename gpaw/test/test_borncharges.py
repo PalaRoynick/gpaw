@@ -8,7 +8,7 @@ from gpaw.borncharges import born_charges_wf
 
 def test_born_charges_wf(in_tmp_dir, gpw_files, comm):
     gpw_file = gpw_files["hbn_pw_nosym"]
-    calc = GPAW(gpw_file, txt=None, communicator=comm)
+    calc = GPAW(gpw_file, communicator=comm)
     atoms = calc.get_atoms()
 
     Z_t = np.array([np.diag([-2.83, -2.83, -0.36]),

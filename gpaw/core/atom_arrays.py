@@ -129,6 +129,9 @@ class AtomDistribution:
         # convert from np.int64 -> int:
         self.indices = [int(a) for a in np.where(self.rank_a == comm.rank)[0]]
 
+    def __bool__(self):
+        return True
+
     def __len__(self) -> int:
         return len(self.rank_a)
 

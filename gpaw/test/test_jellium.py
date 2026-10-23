@@ -3,7 +3,7 @@ import pytest
 from ase import Atoms
 from ase.units import Bohr
 
-from gpaw import Mixer
+from gpaw import Mixer, GPAW
 from gpaw.core import UGArray
 from gpaw.extensions.jellium import Jellium
 
@@ -18,7 +18,7 @@ ne = a**2 * L / (4 * np.pi / 3 * rs**3)
 
 
 @pytest.mark.libxc
-def test_jellium(in_tmp_dir, mpi):
+def test_jellium(in_tmp_dir):
     x = h / 4  # make sure surfaces are between grid-points
     z1 = v - x
     z2 = v + L + x
@@ -41,7 +41,7 @@ def test_jellium(in_tmp_dir, mpi):
             z = mask_r.desc.xyz()[0, 0, :, 2] * Bohr
             mask_r.data[:] = np.logical_and(z > z1, z < z2)
 
-    surf.calc = mpi.GPAW(**params, extensions=[MyJellium(charge=ne)])
+    surf.calc = GPAW(**params, extensions=[MyJellium(charge=ne)])
 
     surf.get_potential_energy()
 
@@ -56,3 +56,7 @@ def test_jellium(in_tmp_dir, mpi):
     # r_s = 5, work function = 2.73 eV
 
     surf.calc.write('jellium.gpw')
+
+
+if __name__ == '__main__':
+    test_jellium(117)

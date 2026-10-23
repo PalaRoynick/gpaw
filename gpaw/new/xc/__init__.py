@@ -20,6 +20,7 @@ from gpaw.xc.hybrid import HybridXC as OldHybridXC
 from gpaw.xc.libvdwxc import VDWXC
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.vdw import VDWFunctionalBase
+from gpaw.mpi import serial_comm
 from gpaw.new.xc.paw_xc_batch import pack_xc_batches, unpack_xc_batches
 
 
@@ -391,7 +392,6 @@ class MGGAFunctional(GGAFunctional):
         args += (taut_sr, dedtaut_sr)
         kwargs['taut_swR'] = taut_swR
         kwargs['interpolate'] = interpolate
-
         return args, kwargs
 
     def _stress(self,  # type: ignore
@@ -441,7 +441,7 @@ def _taut(ibzwfs: IBZWaveFunctions, grid: UGDesc) -> UGArray | None:
     dpsit1_vR = grid.new(comm=None, dtype=ibzwfs.dtype).empty(3)
     taut1_swR = grid.new(comm=None).zeros((ibzwfs.nspins, 6))
     assert isinstance(taut1_swR, UGArray)  # Argggghhh!
-    domain_comm = grid.comm
+    domain_comm = ibzwfs.domain_comm  # grid.comm
 
     for wfs in ibzwfs:
         assert isinstance(wfs, PWFDWaveFunctions)
@@ -476,6 +476,20 @@ def _taut(ibzwfs: IBZWaveFunctions, grid: UGDesc) -> UGArray | None:
                         f * (dpsit1_vR[v1].data.conj() *
                              dpsit1_vR[v2].data).real)
                     w += 1
+
+    ibzwfs.comm.sum(taut1_swR.data, 0)
+    if ibzwfs.comm.rank == 0:
+        symmetries = ibzwfs.ibz.symmetries
+        taut1_swR.symmetrize(symmetries.rotation_scc,
+                             symmetries.translation_sc)
+    domain_complementary_comm = (ibzwfs.kpt_band_comm
+                                 if grid.comm.size < ibzwfs.comm.size
+                                 else serial_comm)
+    if domain_complementary_comm.rank == 0:
+        taut_swR = grid.empty((ibzwfs.nspins, 6))
+        taut_swR.scatter_from(taut1_swR)
+        return taut_swR
+    return None
 
     ibzwfs.kpt_comm.sum(taut1_swR.data, 0)
     if ibzwfs.kpt_comm.rank == 0:

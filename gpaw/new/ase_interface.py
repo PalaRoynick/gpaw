@@ -548,7 +548,6 @@ class ASECalculator:
         from gpaw.new.backwards_compatibility import FakeDensity
         return FakeDensity(ibzwfs=self.dft.ibzwfs,
                            density=self.dft.density,
-                           potential=self.dft.potential,
                            pot_calc=self.dft.pot_calc,
                            densities=self.dft.densities())
 
@@ -605,7 +604,7 @@ class ASECalculator:
             setup = self.setups[a]
             dexc += xc.calculate_paw_correction(
                 setup, np.array([pack_density(D_ii) for D_ii in D_sii.real]))
-        dexc = dft.ibzwfs.domain_comm.sum_scalar(dexc)
+        dexc = density.D_asii.layout.atomdist.comm.sum_scalar(dexc)
         return (exct + dexc - dft.energies._energies['xc']) * Ha
 
     def diagonalize_full_hamiltonian(self,
@@ -675,14 +674,15 @@ class ASECalculator:
         kbcomm1 = dft.ibzwfs.kpt_band_comm
         kbcomm2 = builder.communicators['D']
         potential = dft.potential.redist(
-            builder.grid,
-            builder.electrostatic_potential_desc,
-            builder.atomdist,
+            builder.wf_grid,
+            None,  # builder.electrostatic_potential_desc,
+            builder.wf_atomdist,
             kbcomm1, kbcomm2)
         density = dft.density.redist(builder.grid,
                                      builder.interpolation_desc,
                                      builder.atomdist,
-                                     kbcomm1, kbcomm2)
+                                     dft.pot_calc.domain_complementary_comm,
+                                     builder.communicators['X'])
         ibzwfs = builder.create_ibz_wave_functions(basis_set, potential)
         ibzwfs.fermi_levels = dft.ibzwfs.fermi_levels
 

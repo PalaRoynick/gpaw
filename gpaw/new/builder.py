@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 
 
 class DFTComponentsBuilder:
+    use_zero_bc: bool
+
     def __init__(self,
                  atoms: Atoms,
                  params: Parameters,
@@ -192,15 +194,43 @@ class DFTComponentsBuilder:
         else:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
-        self.distribute_density = (
-            params.parallel.get('distribute_density', False) and
-            comm.size > self.communicators['d'].size)
+        size_c = self.calculate_number_of_grid_points()
 
-        if self.distribute_density:
-            assert self.mode == 'pw'
+        self.distributed_density = params.parallel.get('distribute_density',
+                                                       '_MISSING')
+        if self.distributed_density == '_MISSING':
+            self.distributed_density = (
+                xcfunc.name not in {'QNA', 'TB09'} and
+                np.prod(size_c) / comm.size >= 8**3)
 
-        self.grid, self.fine_grid = self.create_uniform_grids()
-        if self.distribute_density:
+        if self.communicators['d'].size == comm.size:
+            self.distributed_density = False  # already fully distributed
+
+        if self.distributed_density:
+            self.communicators['x'] = self.communicators['w']
+            self.communicators['X'] = serial_comm
+            log(f'Distributing density over all {comm.size} cores')
+        else:
+            self.communicators['x'] = self.communicators['d']
+            self.communicators['X'] = self.communicators['D']
+
+        if self.use_zero_bc:
+            zerobc = ~atoms.pbc
+        else:
+            zerobc = [False, False, False]
+
+        self.grid = UGDesc(
+            cell=atoms.cell / Bohr,
+            pbc=atoms.pbc,
+            zerobc=zerobc,
+            size=size_c,
+            comm=self.communicators['x'])
+        self.fine_grid = self.grid.new(size=size_c * 2)
+        self.atomdist = AtomDistribution(
+            self.grid.ranks_from_fractional_positions(self.relpos_ac),
+            self.grid.comm)
+
+        if self.distributed_density:
             self.wf_grid = self.grid.new(comm=self.communicators['d'])
             self.wf_atomdist = AtomDistribution(
                 self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
@@ -228,13 +258,7 @@ class DFTComponentsBuilder:
     def nelectrons(self) -> float:
         return self.setups.nvalence - self.charge
 
-    @cached_property
-    def atomdist(self) -> AtomDistribution:
-        return AtomDistribution(
-            self.grid.ranks_from_fractional_positions(self.relpos_ac),
-            self.grid.comm)
-
-    def create_uniform_grids(self):
+    def calculate_number_of_grid_points(self) -> np.ndarray:
         raise NotImplementedError
 
     def check_cell(self, cell):
@@ -439,7 +463,7 @@ class DFTComponentsBuilder:
             wfs.eig_n = eig_skn[index] / ha
             wfs._occ_n = occ_skn[index]
             layout = AtomArraysLayout([(setup.ni,) for setup in self.setups],
-                                      atomdist=self.atomdist,
+                                      atomdist=self.wf_atomdist,
                                       dtype=self.dtype)
             P_ani = AtomArrays(layout, dims=dims, comm=band_comm)
 
@@ -493,7 +517,8 @@ def create_communicators(comm: MPIComm,
              for key, comm in comms.items()}
 
     if xp is not np and not GPU_AWARE_MPI:
-        comms = {key: CuPyMPI(comm) for key, comm in comms.items()}
+        comms = {key: comm if isinstance(comm, CuPyMPI) else CuPyMPI(comm)
+                 for key, comm in comms.items()}
 
     return comms
 
@@ -615,25 +640,20 @@ def calculate_number_of_bands(nbands: int | str | None,
     return N
 
 
-def create_uniform_grid(mode: str,
-                        gpts,
-                        cell,
-                        pbc,
-                        symmetries,
-                        h: float | None = None,
-                        interpolation: int | str | None = None,
-                        ecut: float = None,
-                        comm: MPIComm = serial_comm) -> UGDesc:
+def calc_gpts(mode: str,
+              gpts,
+              cell,
+              pbc,
+              symmetries,
+              h: float | None = None,
+              interpolation: int | str | None = None,
+              ecut: float = None) -> np.ndarray:
     """Create grid in a backwards compatible way."""
     cell = cell / Bohr
     if h is not None:
         h /= Bohr
 
     realspace = (mode != 'pw' and interpolation != 'fft')
-    if realspace:
-        zerobc = [not periodic for periodic in pbc]
-    else:
-        zerobc = [False] * 3
 
     if gpts is not None:
         size = gpts
@@ -641,4 +661,4 @@ def create_uniform_grid(mode: str,
         modeobj = SimpleNamespace(name=mode, ecut=ecut)
         size = get_number_of_grid_points(cell, h, modeobj, realspace,
                                          symmetries)
-    return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)
+    return size

@@ -11,7 +11,7 @@ from ase.units import Bohr, Ha
 
 from gpaw.core import UGArray
 from gpaw.gpu import as_np
-from gpaw.gpu.mpi import CuPyMPI
+# from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import zips
 from gpaw.new.brillouin import IBZ
@@ -67,7 +67,7 @@ class IBZWaveFunctions(Generic[WFT]):
         self.xp = wfs.xp
         if self.xp is not np:
             if not GPU_AWARE_MPI:
-                self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
+                pass  # self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
 
         self.move_wave_functions: Callable[..., None] = lambda *args: None
 
@@ -174,6 +174,10 @@ class IBZWaveFunctions(Generic[WFT]):
     def __iter__(self) -> Generator[WFT]:
         yield from self._wfs_u
 
+    @property
+    def atomdist(self):
+        return self._wfs_u[0].P_ani.layout.atomdist
+
     def zero_padded_iter(self):
         """Load-balancing for kpt_comm when doing hybrid functionals."""
         for wfs in self._wfs_u:
@@ -245,8 +249,8 @@ class IBZWaveFunctions(Generic[WFT]):
         """Compute density and place in ``nt_sR`` and ``D_asii``."""
         if nt_sR.desc.comm.size != self.domain_comm.size:
             my_nt_sR = nt_sR.desc.new(
-                comm=self.domain_comm).zeros(self.ncomponents, xp=self.xp)
-            atomdist = self._wfs_u[0].P_ani.layout.atomdist
+                comm=self.domain_comm).empty(self.ncomponents, xp=self.xp)
+            atomdist = self.atomdist
             my_D_asii = D_asii.layout.new(
                 atomdist=atomdist, xp=self.xp).zeros(self.ncomponents)
             self.calculate_density(my_nt_sR, my_D_asii)
@@ -273,6 +277,14 @@ class IBZWaveFunctions(Generic[WFT]):
         pass  # overwritten in LCAOIBZWaveFunctions class
 
     def add_to_ked(self, taut_sR) -> None:
+        if taut_sR.desc.comm.size != self.domain_comm.size:
+            my_taut_sR = taut_sR.desc.new(
+                comm=self.domain_comm).empty(self.ncomponents, xp=self.xp)
+            self.add_to_ked(my_taut_sR)
+            my_taut_sR.redist_to(
+                taut_sR, self.kpt_band_comm, serial_comm)
+            return
+        taut_sR.data[:] = 0.0
         for wfs in self:
             wfs.add_to_ked(taut_sR)
         self.kpt_comm.sum(taut_sR.data)

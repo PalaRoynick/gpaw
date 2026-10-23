@@ -15,6 +15,10 @@ from gpaw.gpu import cupy_is_fake
 from gpaw.utilities import is_contiguous
 
 
+class RealSpaceGridTooSmallError(ValueError):
+    pass
+
+
 class _Transformer:
     def __init__(self, gdin, gdout, nn=1, dtype=float, xp=np):
         self.gdin = gdin
@@ -51,8 +55,9 @@ class _Transformer:
 
             if inpoints > outpoints:
                 points = ' x '.join([str(N) for N in gdin.N_c])
-                raise ValueError('Cannot construct interpolator.  Grid %s '
-                                 'may be too small' % points)
+                raise RealSpaceGridTooSmallError(
+                    'Cannot construct interpolator.  Grid %s '
+                    'may be too small' % points)
 
         assert (pad_cd.ravel() >= 0).all()
         self.ngpin = tuple(gdin.n_c)

@@ -12,7 +12,7 @@ from gpaw.core.domain import Domain
 from gpaw.core.plane_waves import PWArray
 from gpaw.gpu import as_xp
 from gpaw.new import zips
-from gpaw.new.builder import create_uniform_grid
+from gpaw.new.builder import calc_gpts
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
 from gpaw.new.pw.hamiltonian import PWHamiltonian, SpinorPWHamiltonian
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
@@ -25,6 +25,8 @@ from gpaw.typing import Array1D
 
 
 class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
+    use_zero_bc = False
+
     def __init__(self,
                  atoms,
                  params,
@@ -48,8 +50,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         # return AtomDistribution.from_number_of_atoms(len(self.relpos_ac),
         #                                              self.communicators['d'])
 
-    def create_uniform_grids(self):
-        grid = create_uniform_grid(
+    def calculate_number_of_grid_points(self) -> np.ndarray:
+        return calc_gpts(
             'pw',
             self.params.gpts,
             self.atoms.cell,
@@ -57,12 +59,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.ibz.symmetries,
             h=self.params.h,
             interpolation=self.params.interpolation or 'fft',
-            ecut=self.ecut,
-            comm=self.communicators['w' if self.distribute_density else 'd'])
-        fine_grid = grid.new(size=grid.size_c * 2)
-        # decomposition=[2 * d for d in grid.decomposition]
-
-        return grid, fine_grid
+            ecut=self.ecut)
 
     def create_wf_description(self) -> Domain:
         return PWDesc(ecut=self.ecut,
@@ -177,8 +174,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.xc.exx_fraction == 0.0:
                 return PWHamiltonian(self.wf_grid, self.dtype, self.xp)
             return PWHybridHamiltonian(
-                self.grid, self.wf_desc, self.xc, self.setups,
-                self.relpos_ac, self.atomdist, self.log,
+                self.wf_grid, self.wf_desc, self.xc, self.setups,
+                self.relpos_ac, self.log,
                 self.ibz.bz,
                 self.communicators['k'],
                 self.communicators['b'],

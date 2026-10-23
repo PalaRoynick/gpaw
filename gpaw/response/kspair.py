@@ -121,7 +121,8 @@ class KohnShamKPointPairExtractor:
         if self.gs.is_parallelized():
             assert self.context.comm is self.gs.world
             # We assume no grid-parallelization in `map_who_has()`
-            assert self.gs.gd.comm.size == 1
+            assert self.gs.gd.comm.size == 1  # wave functions
+            assert self.gs.finegd.comm.size == 1  # density
 
         self.transitions_blockcomm = transitions_blockcomm
         self.kpts_blockcomm = kpts_blockcomm

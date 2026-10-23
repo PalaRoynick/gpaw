@@ -228,7 +228,8 @@ def test_Fe_bxc(gpw_files, mpi):
     # Bxc calculation
 
     # Set up calculator and plane-wave descriptor
-    calc = mpi.GPAW(gpw_files['fe_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['fe_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     atoms = calc.atoms
     gs = ResponseGroundStateAdapter(calc)
     context = ResponseContext(comm=mpi.comm)

@@ -3,14 +3,17 @@ from __future__ import annotations
 import numpy as np
 
 from gpaw.core import UGArray, UGDesc
-from gpaw.new.builder import create_uniform_grid
+from gpaw.new.builder import calc_gpts
 from gpaw.new.fd.hamiltonian import FDHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.gpw import as_double_precision
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
+from gpaw.transformers import RealSpaceGridTooSmallError
 
 
 class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
+    use_zero_bc = True
+
     def __init__(self,
                  atoms,
                  params,
@@ -30,22 +33,18 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         self.electrostatic_potential_desc = self.fine_grid
         self.interpolation_desc = self.fine_grid
 
-    def create_uniform_grids(self):
-        grid = create_uniform_grid(
+    def calculate_number_of_grid_points(self):
+        return calc_gpts(
             self.mode,
             self.params.gpts,
             self.atoms.cell,
             self.atoms.pbc,
             self.ibz.symmetries,
             h=self.params.h,
-            interpolation=self.interpolation_stencil_range,
-            comm=self.communicators['d'])
-        fine_grid = grid.new(size=grid.size_c * 2)
-        # decomposition=[2 * d for d in grid.decomposition]
-        return grid, fine_grid
+            interpolation=self.interpolation_stencil_range)
 
     def create_wf_description(self) -> UGDesc:
-        return self.grid.new(dtype=self.dtype)
+        return self.wf_grid.new(dtype=self.dtype)
 
     def get_pseudo_core_densities(self):
         if self._nct_aR is None:
@@ -76,17 +75,26 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def create_potential_calculator(self):
         extensions = self.get_extensions()
         poisson_solver = self.create_poisson_solver(extensions)
-        return FDPotentialCalculator(
-            self.grid,
-            self.fine_grid,
-            self.setups,
-            self.xc,
-            poisson_solver,
-            relpos_ac=self.relpos_ac,
-            atomdist=self.atomdist,
-            interpolation_stencil_range=self.interpolation_stencil_range,
-            extensions=extensions,
-            xp=self.xp)
+        try:
+            pot_calc = FDPotentialCalculator(
+                self.grid,
+                self.fine_grid,
+                self.setups,
+                self.xc,
+                poisson_solver,
+                relpos_ac=self.relpos_ac,
+                atomdist=self.atomdist,
+                wf_grid=self.wf_grid,
+                wf_atomdist=self.wf_atomdist,
+                kpt_band_comm=self.communicators['D'],
+                interpolation_stencil_range=self.interpolation_stencil_range,
+                extensions=extensions,
+                xp=self.xp)
+        except RealSpaceGridTooSmallError as ex:
+            raise ValueError(
+                'Try disabling density-distribution: '
+                'parallel=dict(distribute_density=False)') from ex
+        return pot_calc
 
     def create_hamiltonian_operator(self):
         return FDHamiltonian(self.wf_desc,

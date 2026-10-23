@@ -172,6 +172,7 @@ def test_fe_periodic_truncation_function(gpw_files):
     assert abs(vol - diff_vol) > 1e-2 * ref
 
 
+@pytest.mark.serial
 def test_co_spherical_truncation_function_collection(gpw_files):
     # Extract grid information from the cobalt fixture
     calc = GPAW(gpw_files['co_pw'], txt=None)

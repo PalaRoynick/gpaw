@@ -44,6 +44,7 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
         finally:
             params.mode = mode
 
+        self.use_zero_bc = self.builder.use_zero_bc
         super().__init__(atoms, params, comm=comm, log=log)
         self.distribution = params.mode.distribution  # type: ignore
         self.basis = None
@@ -51,8 +52,8 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
             self.builder.electrostatic_potential_desc)
         self.interpolation_desc = self.builder.interpolation_desc
 
-    def create_uniform_grids(self):
-        return self.builder.create_uniform_grids()
+    def calculate_number_of_grid_points(self):
+        return self.builder.calculate_number_of_grid_points()
 
     def create_potential_calculator(self):
         return self.builder.create_potential_calculator()
@@ -117,8 +118,8 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
         ibzwfs, _ = create_lcao_ibzwfs(
             basis,
             self.ibz, self.communicators, self.setups,
-            self.relpos_ac, self.grid, self.dtype,
-            self.nbands, self.ncomponents, self.atomdist, self.nelectrons,
+            self.relpos_ac, self.wf_grid, self.dtype,
+            self.nbands, self.ncomponents, self.wf_atomdist, self.nelectrons,
             coefficients, self.xp)
         return ibzwfs
 

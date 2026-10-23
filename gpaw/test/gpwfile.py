@@ -2646,7 +2646,7 @@ class GPWFiles(CachedFilesHandler):
             mode=PW(400),
             convergence={'density': 1e-7},
             xc=xc,
-            txt=self.folder / f'li2_pw_{xc.lower()}')
+            txt=self.folder / f'li2_pw_{xc.lower()}.txt')
         a.get_potential_energy()
         return a.calc
 

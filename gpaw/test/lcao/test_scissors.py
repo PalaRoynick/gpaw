@@ -20,6 +20,7 @@ def test_scissors():
                    symmetry='off',
                    parallel={'domain': 1,
                              'band': world.size,
+                             'distribute_density': False,
                              'sl_auto': True},
                    txt=None)
     h2.get_potential_energy()

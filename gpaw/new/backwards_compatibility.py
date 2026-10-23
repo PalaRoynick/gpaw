@@ -64,9 +64,9 @@ class FakeWFS:
         ibz = ibzwfs.ibz
         self.kd = ibz._old_kd(ibzwfs.nspins, ibzwfs.kpt_comm)
         self.bd = BandDescriptor(ibzwfs.nbands, ibzwfs.band_comm)
-        self.grid = density.nt_sR.desc
+        self.grid = potential.vt_sR.desc
         self.gd = self.grid._gd
-        atomdist = density.D_asii.layout.atomdist
+        atomdist = potential.dH_asii.layout.atomdist
         self.atom_partition = AtomPartition(atomdist.comm, atomdist.rank_a)
         # self.setups.set_symmetry(ibzwfs.ibz.symmetries.symmetry)
         self.occ_calc = occ_calc
@@ -354,7 +354,6 @@ class FakeDensity:
     def __init__(self,
                  ibzwfs: IBZWaveFunctions,
                  density: Density,
-                 potential: Potential,
                  pot_calc: PotentialCalculator,
                  densities: Densities | None = None):
         self.setups = pot_calc.setups

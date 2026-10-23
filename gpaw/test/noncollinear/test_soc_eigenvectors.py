@@ -6,7 +6,8 @@ from gpaw.spinorbit import soc_eigenstates
 
 @pytest.mark.soc
 def test_soc_eigenvectors_parallel_collect(gpw_files, mpi):
-    calc = mpi.GPAW(gpw_files['mos2_pw'])
+    calc = mpi.GPAW(gpw_files['mos2_pw'],
+                    parallel=dict(distribute_density=False))
     soc = soc_eigenstates(calc)
 
     # This call crashed on master in parallel:

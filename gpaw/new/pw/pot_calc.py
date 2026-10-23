@@ -1,12 +1,11 @@
 import numpy as np
 
 from gpaw.core import PWDesc
-from gpaw.mpi import broadcast_float, serial_comm
+from gpaw.mpi import broadcast_float
 from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
 from gpaw.setup import Setups
-from gpaw.new.potential import Potential
 
 
 class PlaneWavePotentialCalculator(PotentialCalculator):
@@ -38,6 +37,10 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         super().__init__(xc, poisson_solver, setups,
                          relpos_ac=relpos_ac,
                          extensions=extensions,
+                         grid=grid,
+                         wf_grid=wf_grid,
+                         wf_atomdist=wf_atomdist,
+                         kpt_band_comm=kpt_band_comm,
                          soc=soc)
 
         self.vbar_ag = setups.create_local_potentials(
@@ -48,11 +51,6 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         self.grid = grid
         self.fine_grid = fine_grid
-
-        self.distributed_density = grid.comm.size != wf_grid.comm.size
-        self.wf_grid = wf_grid
-        self.wf_atomdist = wf_atomdist
-        self.kpt_band_comm = kpt_band_comm
 
         self.vbar_g = pw.zeros(xp=xp)
         self.vbar_ag.add_to(self.vbar_g)
@@ -165,24 +163,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                 V_aL,
                 e_stress)
 
-    def redist(self, potential: Potential) -> Potential:
-        """Redistribute potential.
-
-        If the density is distributed over the entire "world" then
-        we redistribute it to self.wf_grid and self.wf_atomdist and the
-        complementary communicator self.kpt_band_comm.
-        """
-        if not self.distributed_density:
-            return potential
-        return potential.redist(
-            self.wf_grid,
-            None,
-            self.wf_atomdist,
-            serial_comm,
-            self.kpt_band_comm)
-
-    def move(self, relpos_ac, atomdist):
-        super().move(relpos_ac, atomdist)
+    def move(self, relpos_ac, atomdist, wf_atomdist):
+        super().move(relpos_ac, atomdist, wf_atomdist)
         self.poisson_solver.move(relpos_ac, atomdist)
         self.vbar_ag.move(relpos_ac, atomdist)
         self.vbar_g.data[:] = 0.0
@@ -200,25 +182,21 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         if self._vt_g is not None:
             return self._vt_g, self._nt_g, self._dedtaut_g
 
+        pw1 = self.vbar0_g.desc if self.vbar0_g is not None else None
+        pw = self.pw
+
         nt_R = spinsum(density.nt_sR)
         self._nt_g = nt_R.fft(self.fftplan, pw=self.pw)
 
-        vt_R = spinsum(potential.vt_sR, mean=True)
-        vt_g = None
-        if self.pw.comm.rank < vt_R.desc.comm.size:
-            vt_R = vt_R.gather()
-            if vt_R is not None:
-                vt_g = vt_R.fft(self.fftplan, pw=self.vbar0_g.desc)
-        if self.pw.comm.size == 1:
-            self._vt_g = vt_g
-        else:
-            self._vt_g = self.pw.empty(xp=self.xp)
-            self._vt_g.scatter_from(vt_g)
+        self._vt_g = fft_and_scatter(
+            potential.vt_sR, pw1, pw, self.fftplan, self.kpt_band_comm,
+            self.distributed_density)
 
         dedtaut_sR = potential.dedtaut_sR
         if dedtaut_sR is not None:
-            dedtaut_R = spinsum(dedtaut_sR, mean=True)
-            self._dedtaut_g = dedtaut_R.fft(self.fftplan, pw=self.pw)
+            self._dedtaut_g = fft_and_scatter(
+                dedtaut_sR, pw1, pw, self.fftplan, self.kpt_band_comm,
+                self.distributed_density)
         else:
             self._dedtaut_g = None
 
@@ -255,6 +233,35 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         for ext in self.extensions:
             stress_vv += ext.stress_contribution()
         return stress_vv
+
+
+def fft_and_scatter(a_sR,
+                    pw1,
+                    pw,
+                    fftplan,
+                    kpt_band_comm,
+                    distributed_density):
+    if not distributed_density:
+        a1_g = None
+        a1_R = spinsum(a_sR, mean=True).gather()
+        if a1_R is not None:
+            a1_g = a1_R.fft(fftplan, pw=pw1)
+        if pw.comm.size == 1:
+            return a1_g
+        a_g = pw.empty(xp=a_sR.xp)
+        a_g.scatter_from(a1_g)
+        return a_g
+
+    a1_g = None
+    if kpt_band_comm.rank == 0:
+        a1_R = spinsum(a_sR, mean=True).gather()
+        if a1_R is not None:
+            a1_g = a1_R.fft(fftplan, pw=pw1)
+    if pw.comm.size == 1:
+        return a1_g
+    a_g = pw.empty(xp=a_sR.xp)
+    a_g.scatter_from(a1_g)
+    return a_g
 
 
 ERROR = (

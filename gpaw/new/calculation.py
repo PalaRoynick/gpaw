@@ -219,7 +219,7 @@ class DFT:
         else:
             wf_atomdist = atomdist
 
-        self.pot_calc.move(self.relpos_ac, atomdist)
+        self.pot_calc.move(self.relpos_ac, atomdist, wf_atomdist)
         self.ibzwfs.move(self.relpos_ac, wf_atomdist)
         self.density.move(self.relpos_ac, atomdist)
         if self.ibzwfs.has_wave_functions():
@@ -489,7 +489,7 @@ class DFT:
             wfs = wfs.collect_bands(n1, n2)
             if wfs is not None:
                 basis = getattr(self.scf_loop.hamiltonian, 'basis', None)
-                grid = self.density.nt_sR.desc
+                grid = self.potential.vt_sR.desc
                 if collinear:
                     wfs = wfs.to_uniform_grid_wave_functions(grid, basis)
                     psit_nR = wfs.psit_nX
@@ -699,7 +699,7 @@ class DFT:
         # Not quite sure it is needed???
         # At the moment we skip it on GPU's because it doesn't
         # work!
-        if density.nt_sR.xp is np and not builder.distribute_density:
+        if density.nt_sR.xp is np and not builder.distributed_density:
             ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)
@@ -749,10 +749,13 @@ class DFT:
         if not isinstance(self.ibzwfs, LCAOIBZWaveFunctions):
             raise ValueError
         self.params.mode = Mode.from_param(mode)
+        self.params.parallel['distribute_density'] = \
+            self.pot_calc.distributed_density
         builder = self.params.dft_component_builder(
             self.atoms, log=self.log, comm=self.comm)
         self.scf_loop = builder.create_scf_loop()
         self.pot_calc = builder.create_potential_calculator()
+
         if builder.mode == 'pw':
             self.density.nct_aX = builder.get_pseudo_core_densities()
             self.density.tauct_aX = builder.get_pseudo_core_ked()
@@ -760,7 +763,8 @@ class DFT:
                                             builder.interpolation_desc)
             self.density.normalize(self.pot_calc.charge)
             if self.density.nt_sR.xp is np:
-                self.ibzwfs.kpt_band_comm.broadcast(self.density.nt_sR.data, 0)
+                self.pot_calc.domain_complementary_comm.broadcast(
+                    self.density.nt_sR.data, 0)
             self.potential, self.energies, _ = self.pot_calc.calculate(
                 self.density)
 

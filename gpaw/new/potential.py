@@ -95,9 +95,9 @@ class Potential:
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()
         vt_sR = self.vt_sR.to_xp(np).gather()
         dedtaut_sR = None
-        vHt_x = None
         if self.dedtaut_sR is not None:
             dedtaut_sR = self.dedtaut_sR.to_xp(np).gather()
+        vHt_x = None
         if self.vHt_x is not None:
             vHt_x = self.vHt_x.to_xp(np).gather()
         return dH_asp, vt_sR, dedtaut_sR, vHt_x
@@ -112,7 +112,7 @@ class Potential:
         writer.write(
             potential=converted_potential,
             atomic_hamiltonian_matrices=dH_asp.data * Ha)
-        if self.vHt_x is not None:
+        if vHt_x is not None:
             vHt_x_data = flags.to_storage_dtype(vHt_x.data * Ha)
             writer.write(electrostatic_potential=vHt_x_data)
         if self.dedtaut_sR is not None:
@@ -147,4 +147,4 @@ class Potential:
 
             vacuum_level /= (3 - grid.pbc_c.sum())
 
-        return broadcast_float(vacuum_level, grid.comm) * Ha
+        return broadcast_float(vacuum_level, self.vHt_x.desc.comm) * Ha

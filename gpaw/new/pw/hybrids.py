@@ -15,7 +15,7 @@ from gpaw.core import PWArray, PWDesc, UGArray, UGDesc
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.pwacf import PWAtomCenteredFunctions
-from gpaw.mpi import broadcast
+from gpaw.mpi import broadcast, serial_comm
 from gpaw.new import zips as zip
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import Logger
@@ -203,7 +203,6 @@ class PWHybridHamiltonian(PWHamiltonian):
                  xc,
                  setups: Setups,
                  relpos_ac,
-                 atomdist,
                  log,
                  bz,
                  kpt_comm,
@@ -276,7 +275,7 @@ class PWHybridHamiltonian(PWHamiltonian):
 
     def apply_orbital_dependent(self,
                                 ibzwfs: IBZWaveFunctions,
-                                D_asii,
+                                D_asii: AtomArrays,
                                 psit2_nG: XArray,
                                 spin: int,
                                 Htpsit2_nG: XArray | None = None,
@@ -287,6 +286,10 @@ class PWHybridHamiltonian(PWHamiltonian):
         assert isinstance(psit2_nG, PWArray)
         assert Htpsit2_nG is None or isinstance(Htpsit2_nG, PWArray)
         assert isinstance(ibzwfs, PWFDIBZWaveFunctions)
+
+        if D_asii.layout.atomdist.comm.size != ibzwfs.atomdist.comm.size:
+            D_asii = D_asii.redist(
+                ibzwfs.atomdist, serial_comm, ibzwfs.kpt_band_comm)
 
         if F_av is not None:
             F1_av = np.zeros_like(F_av)
@@ -580,7 +583,6 @@ def non_self_consistent_hybrid_xc_energy(
         exx,
         dft.setups,
         dft.relpos_ac,
-        dft.density.D_asii.layout.atomdist,
         log,
         ibzwfs.ibz.bz,
         ibzwfs.kpt_comm,
