@@ -23,7 +23,8 @@ cavity = EffectivePotentialCavity(
     effective_potential=SJMPower12Potential(
         H2O_layer={'style': 'ghost_atoms'}),
     temperature=298.15,  # K
-    surface_calculator=GradientSurface())
+    surface_calculator=GradientSurface(),
+    top_ramp=(1.2, 0.25))  # Å: depth, width
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 sjm = SJM(
