@@ -67,8 +67,12 @@ class PulayMixer(BaseMixer):
         Rc_sX = self.Rc_hsX.next()
         self.add_compensation_charge(R_sX, R_asii, density, out=Rc_sX)
 
-        # Step 2: Calculate the DIIS matrix
         MRc_sX = self.metric(Rc_sX)
+
+        # Precondition
+        R_sX.data[0] -= MRc_sX.data[0]
+
+        # Step 2: Calculate the DIIS matrix
         MRc_1sX = MRc_sX.new(data=MRc_sX.data[None], dims=(1,) + MRc_sX.dims)
         H_h = self.Rc_hsX.dotprod(MRc_1sX)
         if nh == self.nmaxold:

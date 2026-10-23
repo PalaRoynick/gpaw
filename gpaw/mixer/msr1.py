@@ -118,6 +118,9 @@ class MSR1Mixer(BaseMixer):
 
         self.metric(self.Rc_hsX[-1], out=self.MRc_hsX.next())
 
+        # Precondition residual
+        _R_sX.data[0] -= self.MRc_hsX[-1].data[0]
+
         # Step 2: Do a pratt-step if nold <= 1, else discard bad steps
         if nold <= 1:
             return self.pratt_step(nt_sX, D_asii, density)

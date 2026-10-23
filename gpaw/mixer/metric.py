@@ -92,6 +92,7 @@ class FFTMetric(BaseMetric):
 
         ekin_G = self.xp.asarray(self.pw.ekin_G)
         w_G = (self.weight + ekin_G) / (self.sigma + ekin_G)
+        w_G *= self.sigma / self.weight
 
         assert isinstance(n_sX, UGArray)
 
