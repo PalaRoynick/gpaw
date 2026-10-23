@@ -52,6 +52,7 @@ def test_incomplete_point_group2():
     sym = create_symmetries_object(atoms, **kwargs, guarantee_group=True)
     assert len(sym) == 2
 
+
 def test_incomplete_point_group_after_prune_symmetries():
 
     cell = [[5.398741468147337, 0.0, 0.0],
