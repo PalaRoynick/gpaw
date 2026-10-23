@@ -1,8 +1,11 @@
+import numpy as np
 import pytest
 from ase import Atoms
 
 from gpaw.new.symmetry import (Symmetries, SymmetryAnalysisBug,
                                create_symmetries_object)
+from gpaw.utilities.symmetry import (find_set_of_lattice_symmetries,
+                                     prune_symmetries)
 
 
 def test_incomplete_point_group1():
@@ -48,3 +51,50 @@ def test_incomplete_point_group2():
         sym = create_symmetries_object(atoms, **kwargs, guarantee_group=False)
     sym = create_symmetries_object(atoms, **kwargs, guarantee_group=True)
     assert len(sym) == 2
+
+
+def test_incomplete_point_group_after_prune_symmetries():
+
+    cell = [[5.398741468147337, 0.0, 0.0],
+            [2.699370734073669, 4.675447259880091, 0.0],
+            [2.699370734073669, 1.5584824199600305, 4.408053950055032]]
+    positions = [[5.3987368040710075, 4.492750721011745, 3.1768545010081546],
+                 [6.590204659302528, 3.804856434063041, 1.2311956408445004],
+                 [4.207268948839487, 3.8048564340630406, 1.2311956408445002],
+                 [6.590204659302529, 2.4290678601656315, 3.1768545010081555],
+                 [4.207268948839486, 2.4290678601656315, 3.1768545010081555],
+                 [5.3987368040710075, 1.7411735732169276, 1.2311956408445006],
+                 [5.398736804071007, 3.1169621471143363, 2.2040250709263285],
+                 [0.0, 0.0, 0.0]]
+
+    atoms = Atoms('F6SiYb', cell=cell, positions=positions, pbc=True)
+    cell_cv = atoms.cell
+    relpos_ac = atoms.get_scaled_positions()
+    id_a = atoms.numbers
+
+    tol = 1e-5
+
+    U_scc = find_set_of_lattice_symmetries(
+        cell_cv, np.array([True, True, True]),
+        tolerance=tol, guarantee_group=True)
+
+    with pytest.raises(SymmetryAnalysisBug):
+        rotation_scc, translation_sc, atommap_sa = prune_symmetries(
+            U_scc, cell_cv, relpos_ac, id_a,
+            tolerance=tol, guarantee_group=False)
+        Symmetries(cell=cell_cv,
+                   rotations=rotation_scc,
+                   translations=translation_sc,
+                   atommaps=atommap_sa,
+                   tolerance=tol)
+
+    rotation_scc, translation_sc, atommap_sa = prune_symmetries(
+        U_scc, cell_cv, relpos_ac, id_a,
+        tolerance=tol, guarantee_group=True)
+
+    sym = Symmetries(cell=cell_cv,
+                     rotations=rotation_scc,
+                     translations=translation_sc,
+                     atommaps=atommap_sa,
+                     tolerance=tol)
+    assert len(sym) == 24

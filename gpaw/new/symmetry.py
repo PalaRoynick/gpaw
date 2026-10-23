@@ -124,7 +124,7 @@ def create_symmetries_object(atoms: Atoms,
     if extra_ids is not None:
         id_a = integer_ids((id, x) for id, x in zips(id_a, extra_ids))
 
-    relpos_ac = np.array(atoms.get_scaled_positions())
+    relpos_ac = atoms.get_scaled_positions()
     if rotation_scc is None:
         # Find symmetries from cell, ids and positions:
         if point_group:
@@ -134,7 +134,7 @@ def create_symmetries_object(atoms: Atoms,
 
             rotation_scc, translation_sc, atommap_sa = prune_symmetries(
                 rotation_scc, cell_cv, relpos_ac, id_a,
-                tolerance, symmorphic, _backwards_compatible)
+                tolerance, symmorphic, guarantee_group, _backwards_compatible)
 
             sym = Symmetries(
                 cell=cell_cv,
