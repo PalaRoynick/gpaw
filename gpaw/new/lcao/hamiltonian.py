@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import numpy as np
-import scipy.sparse as sparse
-
+from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
+                                   block_diag_product)
 from gpaw.core.matrix import Matrix
 from gpaw.external import ExternalPotential
 from gpaw.lfc import BasisFunctions
-from gpaw.new import zips
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
-from gpaw.typing import Array2D, Array3D
+from gpaw.typing import Array3D
 from gpaw.utilities import unpack_hermitian
 
 
@@ -24,11 +23,11 @@ class HamiltonianMatrixCalculator:
 class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
     def __init__(self,
                  V_sxMM: list[np.ndarray],
-                 dH_saii: list[dict[int, Array2D]],
+                 dH_asii: AtomArrays,
                  basis: BasisFunctions,
                  include_kinetic: bool = True):
         self.V_sxMM = V_sxMM
-        self.dH_saii = dH_saii
+        self.dH_asii = dH_asii
         self.basis = basis
         self.include_kinetic = include_kinetic
 
@@ -58,33 +57,17 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
     def _calculate_matrix_without_kinetic(self,
                                           wfs: LCAOWaveFunctions,
                                           V_xMM: Array3D = None,
-                                          dH_aii: dict[int, Array2D] = None
+                                          dH_aii: AtomArrays | None = None
                                           ) -> Matrix:
         if V_xMM is None:
             V_xMM = self.V_sxMM[wfs.spin]
 
         if dH_aii is None:
-            dH_aii = self.dH_saii[wfs.spin]
+            dH_aii = self.dH_asii[:, wfs.spin]
 
         V_MM = self._calculate_potential_matrix(wfs, V_xMM)
 
-        if len(dH_aii) == 0:
-            return V_MM
-
-        M1, M2 = V_MM.dist.my_row_range()
-        if V_MM.xp is np:
-            dH_II = sparse.block_diag(
-                [sparse.coo_array(dH_ii) for dH_ii in dH_aii.values()],
-                format='csr')
-            P_MI = sparse.hstack(
-                [sparse.coo_matrix(P_Mi) for P_Mi in wfs.P_aMi.values()],
-                format='csr')
-            V_MM.data += (P_MI[M1:M2].dot(dH_II)).conj().dot(P_MI.T).todense()
-        else:
-            for a, dH_ii in dH_aii.items():
-                P_Mi = wfs.P_aMi[a]
-                # XXX use gemm?
-                V_MM.data += (P_Mi[M1:M2] @ dH_ii).conj() @ P_Mi.T
+        block_diag_product(wfs.P_aMi, dH_aii, V_MM)
 
         return V_MM
 
@@ -110,9 +93,9 @@ class NonCollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
     def calculate_matrix(self,
                          wfs: LCAOWaveFunctions) -> Matrix:
         V_sMM = [
-            self.matcalc._calculate_matrix_without_kinetic(wfs, V_xMM, dH_aii)
-            for V_xMM, dH_aii in zips(self.matcalc.V_sxMM,
-                                      self.matcalc.dH_saii)]
+            self.matcalc._calculate_matrix_without_kinetic(
+                wfs, V_xMM, self.matcalc.dH_asii[:, s])
+            for s, V_xMM in enumerate(self.matcalc.V_sxMM)]
 
         V_sMM[0] += wfs.T_MM
 
@@ -149,12 +132,8 @@ class LCAOHamiltonian(Hamiltonian):
         V_sxMM = [self.basis.calculate_potential_matrices(vt_R.data)
                   for vt_R in potential.vt_sR]
 
-        dH_saii = [{a: dH_sii[s]
-                    for a, dH_sii
-                    in potential.dH_asii.items()}
-                   for s in range(len(V_sxMM))]
-
-        matcalc = CollinearHamiltonianMatrixCalculator(V_sxMM, dH_saii,
+        dH_asii = potential.dH_asii
+        matcalc = CollinearHamiltonianMatrixCalculator(V_sxMM, dH_asii,
                                                        self.basis,
                                                        include_kinetic=True)
         if len(V_sxMM) < 4:
@@ -187,18 +166,22 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
         W_aL = pot_calc.ghat_aLr.integrate(vext_r)
 
         assert ibzwfs.ibz.bz.gamma_only
-        setups_a = ibzwfs._wfs_u[0].setups
 
         self.V_sxMM = [V_MM for s in range(self.nspins)]
-        self.dH_saii = [{a: unpack_hermitian(setups_a[a].Delta_pL @ W_L)
-                         for (a, W_L) in W_aL.items()}
-                        for s in range(self.nspins)]
+
+        setup_a = ibzwfs._wfs_u[0].setups
+        self.dH_asii = AtomArraysLayout(
+            [(setup.ni, setup.ni) for setup in setup_a],
+            atomdist=W_aL.layout.atomdist).empty(self.nspins)
+        for a, W_L in W_aL.items():
+            dH_ii = unpack_hermitian(setup_a[a].Delta_pL @ W_L)
+            self.dH_asii[a][:] = dH_ii
 
     def create_hamiltonian_matrix_calculator(self,
                                              potential,
                                              ) -> HamiltonianMatrixCalculator:
         # The supplied potential is ignored.
         # We are kicking with the potential stored by the init
-        return CollinearHamiltonianMatrixCalculator(self.V_sxMM, self.dH_saii,
+        return CollinearHamiltonianMatrixCalculator(self.V_sxMM, self.dH_asii,
                                                     self.basis,
                                                     include_kinetic=False)

@@ -12,6 +12,7 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
+from gpaw.utilities.blas import mmm
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -121,7 +122,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
     @property
     def _layout(self):
         atomdist = AtomDistribution.from_atom_indices(
-            list(self.P_aMi),
+            list(self.P_aMi.keys()),
             self.domain_comm,
             natoms=len(self.setups))
         return AtomArraysLayout([setup.ni for setup in self.setups],
@@ -138,10 +139,15 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             # C_nM.data in order for us to be able to tell that the
             # data is uninitialized:
             if not isinstance(self.C_nM, Matrix):
-                raise RuntimeError('There are no projections or wavefunctions')
+                raise RuntimeError(
+                    'Can not calculate projections due to '
+                    'wave function collapse!')
 
-            for a, P_Mi in self.P_aMi.items():
-                self._P_ani[a][:] = self.C_nM.data @ P_Mi
+            if self.xp is np:
+                mmm(1.0, self.C_nM.data, 'N', self.P_aMi.data, 'N',
+                    0.0, self._P_ani.data)
+            else:
+                self._P_ani.data[:] = self.C_nM.data @ self.P_aMi.data
 
         return self._P_ani
 

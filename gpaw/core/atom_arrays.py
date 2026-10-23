@@ -348,6 +348,9 @@ class AtomArrays:
     def values(self):
         return self._arrays.values()
 
+    def __iter__(self):
+        return self._arrays.keys()
+
     @overload
     def gather(self, broadcast: Literal[False] = False, copy: bool = False
                ) -> AtomArrays | None:
@@ -592,3 +595,21 @@ class AtomArrays:
             realdtype = as_real_dtype(self.data.dtype)
             dH_aii_times_P_ani_gpu(xp.asarray(data, dtype=realdtype),
                                    ni_a, self.data, out_ani.data)
+
+
+def block_diag_product(P_aMi: AtomArrays,
+                       block_aii: AtomArrays,
+                       out_MM: Matrix) -> None:
+    """Perform out += P*blocks*P.T operation.
+
+    Pseudo code::
+
+        out_MM += P_aMi[a].conj() @ block_aii[a] @ P_aMi[a].T for all a
+    """
+    M1, M2 = out_MM.dist.my_row_range()
+    P1_aMi = P_aMi[:, M1:M2]
+    PB_aMi = P1_aMi.new()
+    P1_aMi.block_diag_multiply(block_aii, PB_aMi)
+    PB_MI = PB_aMi.matrix
+    PB_MI.complex_conjugate()
+    PB_MI.multiply(P_aMi.matrix, opa='N', opb='T', beta=1.0, out=out_MM)

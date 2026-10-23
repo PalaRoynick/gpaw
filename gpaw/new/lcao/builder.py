@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy import sparse
-
+from gpaw.core.atom_arrays import (AtomArraysLayout, AtomDistribution,
+                                   block_diag_product)
 from gpaw.core.matrix import Matrix, MatrixWithNoData
 from gpaw.dft import Parameters
 from gpaw.lcao.tci import TCIExpansions
@@ -212,25 +212,36 @@ def tci_helper(basis,
         np.negative(T0_qMM.imag, T0_qMM.imag)
 
     P_aqMi = manytci.P_aqMi(my_atom_indices)
-    P_qaMi = [{a: P_aqMi[a][q] for a in my_atom_indices}
-              for q in range(len(S0_qMM))]
 
-    add_atomic_overlap_corrections(P_qaMi=P_qaMi,
-                                   S0_qMM=S0_qMM,
-                                   setups=setups,
-                                   M1=M1,
-                                   M2=M2)
-    domain_comm.sum(S0_qMM)
-
-    # self.atomic_correction= self.atomic_correction_cls.new_from_wfs(self)
-    # self.atomic_correction.add_overlap_correction(newS_qMM)
-
+    atomdist = AtomDistribution.from_atom_indices(
+        my_atom_indices,
+        domain_comm,
+        natoms=len(setups))
+    layout = AtomArraysLayout([setup.ni for setup in setups],
+                              atomdist=atomdist,
+                              dtype=dtype)
     nao = setups.nao
+
+    P_qaMi = []
+    for q in range(len(S0_qMM)):
+        P_aMi = layout.empty(nao)
+        for a, P_Mi in P_aMi.items():
+            P_Mi[:] = P_aqMi[a][q]
+        P_qaMi.append(P_aMi)
 
     S_qMM = [Matrix(nao, nao, data=S_MM,
                     dist=(band_comm, band_comm.size, 1)) for S_MM in S0_qMM]
     T_qMM = [Matrix(nao, nao, data=T_MM,
                     dist=(band_comm, band_comm.size, 1)) for T_MM in T0_qMM]
+
+    dO_aii = AtomArraysLayout([(setup.ni, setup.ni) for setup in setups],
+                              atomdist=atomdist).empty()
+    for a, dO_ii in dO_aii.items():
+        dO_ii[:] = setups[a].dO_ii
+
+    for P_aMi, S_MM in zips(P_qaMi, S_qMM):
+        block_diag_product(P_aMi, dO_aii, S_MM)
+        domain_comm.sum(S_MM.data)
 
     for S_MM in S_qMM:
         S_MM.tril2full()
@@ -242,27 +253,6 @@ def tci_helper(basis,
     # Copy to GPU if needed:
     S_qMM = [S_MM.to_xp(xp) for S_MM in S_qMM]
     T_qMM = [T_MM.to_xp(xp) for T_MM in T_qMM]
-    P_qaMi = [{a: xp.asarray(P_Mi) for a, P_Mi in P_aMi.items()}
-              for P_aMi in P_qaMi]
+    P_qaMi = [P_aMi.to_xp(xp) for P_aMi in P_qaMi]
 
     return S_qMM, T_qMM, P_qaMi, tciexpansions, tci_derivatives
-
-
-def add_atomic_overlap_corrections(
-        P_qaMi,
-        S0_qMM,
-        setups,
-        M1: int,
-        M2: int):
-    for P_aMi, S_MM in zips(P_qaMi, S0_qMM):
-        # No atoms on this rank
-        if len(P_aMi) == 0:
-            continue
-
-        dO_II = sparse.block_diag(
-            [sparse.coo_array(setups[a].dO_ii) for a in P_aMi],
-            format='csr')
-        P_MI = sparse.hstack(
-            [sparse.coo_matrix(P_Mi) for P_Mi in P_aMi.values()],
-            format='csr')
-        S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()

@@ -34,6 +34,7 @@ def rk(alpha, a: np.ndarray, beta, c: np.ndarray, trans='c'):  # noqa
     # Drop imaginary parts on the diagonal (adhering to reference BLAS)
     np.fill_diagonal(c, c.diagonal().real)
 
+
 def r2k(alpha, a, b, beta, c, trans='c'):  # noqa
     """NOTE: Fills in the entire c matrix, unlike the C-blas version that only
     fills in the lower triangle. Does NOT support complex alpha, unlike the
