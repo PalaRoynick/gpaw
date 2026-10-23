@@ -115,13 +115,13 @@ class MSR1Mixer(BaseMixer):
 
         self.add_compensation_charge(_R_sX, _R_asii, density,
                                      out=self.Rc_hsX.next())
-        self.metric(self.Rc_hsX[-1], out=self.MRc_hsX.next())
+        self.metric(self.Rc_hsX[-1], out=self.MRc_hsX.next(), order=0.5)
 
         # Precondition residual
         _R_sX.data[0] -= self.MRc_hsX[-1].data[0]
         self.add_compensation_charge(_R_sX, _R_asii, density,
                                      out=self.Rc_hsX[-1])
-        self.metric(self.Rc_hsX[-1], out=self.MRc_hsX[-1], order=2)
+        self.metric(self.Rc_hsX[-1], out=self.MRc_hsX[-1])
 
         # Step 2: Do a pratt-step if nold <= 1, else discard bad steps
         if nold <= 1:

@@ -85,7 +85,7 @@ class FFTMetric(BaseMetric):
 
     def __call__(self, n_sX: XArray,
                  out: XArray | None = None,
-                 order: int = 1) -> XArray:
+                 order: float = 1.0) -> XArray:
         if out is None:
             out = n_sX.new()
         # We will now assume that the density is represented
