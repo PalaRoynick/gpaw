@@ -10,7 +10,7 @@ from gpaw.mom import prepare_mom_calculation
 @pytest.mark.mom
 @pytest.mark.do
 def test_mom_directopt_lcao(in_tmp_dir, gpw_files):
-    calc = GPAW(gpw_files['h2o_mom_do_lcao'])
+    calc = GPAW(gpw_files['h2o_mom_do_lcao'], legacy_gpaw=True)
     # XXX(rg): Remove hack after tchem-gl-13
     calc.set_positions()
     calc.wfs.eigensolver.initialize_dm_helper(

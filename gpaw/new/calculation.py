@@ -621,6 +621,7 @@ class DFT:
         builder = params.dft_component_builder(atoms, log=log,
                                                comm=self.comm)
 
+        basis_set = builder.create_basis_set()
         scf_loop = builder.create_scf_loop()
         pot_calc = builder.create_potential_calculator()
         xcfunc_n = pot_calc.xc
@@ -633,6 +634,7 @@ class DFT:
             xcfunc_o = self.pot_calc.xc
             assert xcfunc_n.get_setup_name() == xcfunc_o.get_setup_name()
 
+        self.basis = basis_set
         self.scf_loop = scf_loop
         self.pot_calc = pot_calc
 

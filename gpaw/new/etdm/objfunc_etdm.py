@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from gpaw.new.etdm.skewherm_matrix import SkewHermitian
+from gpaw.new.etdm.etdm import KArray
 from gpaw.new.etdm.tools import get_n_occ
 
 
@@ -33,7 +34,7 @@ class ObjectiveFunctionETDM(ABC):
     """
 
     def __init__(self, ndim: int, f_n: np.ndarray, dtype: type,
-                 representation='full'):
+                 representation='full', matrix_exp='egdecomp'):
         """
         Initialize the objective function with default skew-Hermitian matrices.
 
@@ -86,6 +87,10 @@ class ObjectiveFunctionETDM(ABC):
         ]
 
     @property
+    def kpt_comm(self):
+        return self.ibzwfs.kpt_comm
+
+    @property
     def a_vec_u(self):
         """
         Accessor for the list of SkewHermitian matrices.
@@ -121,35 +126,44 @@ class ObjectiveFunctionETDM(ABC):
     @property
     def energy(self):
         """
-        Compute or return cached value of the objective function (energy).
-        Computes energy only if it hasn't been computed
-        or if parameters were updated.
+        Current energy of the objective function
 
         Returns
         -------
         float
         """
-        if self._energy is None:
-            self._energy, self._gradient = self._calc_energy_and_gradient()
+
         return self._energy
+
+    @energy.setter
+    def energy(self, shuttle):
+
+        if self._energy is None:
+            shuttle['a_vec_u'] = self.a_vec_u
+            self._energy, self._gradient = \
+                self._calc_energy_and_gradient(shuttle)
 
     @property
     def gradient(self):
         """
-        Compute or return cached gradient of the objective function
-        with respect to the independent parameters in `a_vec_u`.
-        Computes gradient only if it hasn't been computed
-        or if parameters were updated.
+        Current gradient of the objective function w.r.t. `a_u`
 
         Returns
         -------
         ndarray
         """
-        if self._gradient is None:
-            self._energy, self._gradient = self._calc_energy_and_gradient()
+
         return self._gradient
 
-    def _calc_energy_and_gradient(self, a_u: np.ndarray = None):
+    @gradient.setter
+    def gradient(self, shuttle):
+
+        if self._gradient is None:
+            shuttle['a_vec_u'] = self.a_vec_u
+            self._energy, self._gradient = \
+                self._calc_energy_and_gradient(shuttle)
+
+    def _calc_energy_and_gradient(self, shuttle):
         """
         Calculate the objective function value (energy) and its gradient
         with respect to the skew-Hermitian parameters.
@@ -169,22 +183,29 @@ class ObjectiveFunctionETDM(ABC):
         """
         # If a new parameter vector is given,
         # update the internal SkewHermitian objects
-        if a_u is not None:
-            self.a_vec_u = a_u
+        # if shuttle['a_vec_u'] is not None:
+        #     self._a_vec_u = shuttle['a_vec_u']
+        # else:
+        #     shuttle['a_vec_u'] = self._a_vec_u
 
         # Compute energy and Hamiltonian matrix elements
-        energy, h_unn = self._calc_obf_value_and_matrix_elements()
+        energy, h_unn = self._calc_obf_value_and_matrix_elements(shuttle)
 
-        # Compute gradient for each SkewHermitian matrix
-        # h_unn - h_unn.T.conj() ensures a skew-Hermitian
-        # matrix for derivative
-        gradient = np.array(
-            [
-                a.calc_gradient(h_nn - h_nn.T.conj())
-                for (a, h_nn) in zip(self.a_vec_u, h_unn)
-            ]
-        )
-
+        if self.use_egdecomp:
+            # Compute gradient for each SkewHermitian matrix
+            # h_unn - h_unn.T.conj() ensures a skew-Hermitian
+            # matrix for derivative
+            gradient = KArray(
+                [
+                    a.calc_gradient(h_nn - h_nn.T.conj())
+                    for (a, h_nn) in zip(self.a_vec_u, h_unn)
+                ], comm=self.kpt_comm
+            )
+        else:
+            # In this case h_nn is already modified in objfunc_lcao
+            gradient = KArray(
+                [h_nn * 2. for h_nn in h_unn], comm=self.kpt_comm
+            )
         return energy, gradient
 
     @abstractmethod

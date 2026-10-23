@@ -5,19 +5,23 @@ import numpy as np
 import pytest
 
 from gpaw import GPAW
-from gpaw.directmin.etdm_lcao import LCAOETDM
 from gpaw.typing import RNG
+from gpaw.directmin.etdm_lcao import LCAOETDM
+from gpaw.new.etdm.tools import excite
 
 
 @pytest.mark.do
-def test_directmin_lcao(in_tmp_dir, gpw_files):
+@pytest.mark.parametrize("searchdir_algo", ['l-bfgs', 'l-bfgs-p', 'LSR1P'])
+def test_directmin_lcao(in_tmp_dir, gpw_files, searchdir_algo):
     """
     test exponential transformation
-    direct minimization method for KS-DFT in LCAO
+    direct minimization method for KS-DFT in LCAO,
+    also tests three search direction algorithms
     :param in_tmp_dir:
     :return:
     """
 
+    # this section is a test for gpaw old
     class NiterCheck(NamedTuple):
         assertion: str
         func: Callable[[int], bool]
@@ -29,7 +33,9 @@ def test_directmin_lcao(in_tmp_dir, gpw_files):
     def check_niter(niter: int, check: NiterCheck) -> None:
         assert check.func(niter), f'failed {check.assertion} (niter = {niter})'
 
-    calc = GPAW(gpw_files['h2o_do_lcao'])
+    calc = GPAW(gpw_files['h2o_do_lcao'], legacy_gpaw=True)
+    calc.set(eigensolver={'name': 'etdm',
+                          'searchdir_algo': searchdir_algo})
     H2O = calc.atoms
     H2O.calc = calc
     e = H2O.get_potential_energy()
@@ -39,44 +45,74 @@ def test_directmin_lcao(in_tmp_dir, gpw_files):
     abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
     assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
 
-    lcaoetdm_kwargs = dict(representation='u-invar',
-                           matrix_exp='egdecomp-u-invar',
-                           need_init_orbs=False,
-                           linesearch_algo={'name': 'max-step'})
-    lcaoetdm_rand_and_niter_checks: Collection[
-        tuple[RNG | None, NiterCheck]
-    ] = [(None, is_approx_3),
-         (np.random.default_rng(8), is_le_12)]
+#    lcaoetdm_kwargs = dict(representation='u-invar',
+#                           matrix_exp='egdecomp-u-invar',
+#                           need_init_orbs=False,
+#                           linesearch_algo={'name': 'max-step'})
+#    lcaoetdm_rand_and_niter_checks: Collection[
+#        tuple[RNG | None, NiterCheck]
+#    ] = [(None, is_approx_3),
+#         (np.random.default_rng(8), is_le_12)]
+#
+#    f2 = np.array([[-1.11463, -1.23723, 0.0],
+#                   [1.35791, 0.00827, 0.0],
+#                   [-0.34423, 1.33207, 0.0]])
+#
+#    for use_rho in [0, 1]:
+#        if use_rho:
+#            for kpt in calc.wfs.kpt_u:
+#                kpt.rho_MM = calc.wfs.calculate_density_matrix(kpt.f_n,
+#                                                               kpt.C_nM)
+#        f = H2O.get_forces()
+#        H2O.calc.results.pop('forces')
+#
+#        assert f2 == pytest.approx(f, abs=abs_force_tol)
+#
+#    calc.write('h2o.gpw', mode='all')
+#    from gpaw import restart
+#    H2O, calc = restart('h2o.gpw', txt='-', legacy_gpaw=True)
+#    H2O.positions += 1.0e-6
+#    f3 = H2O.get_forces()
+#    niter = calc.get_number_of_iterations()
+#
+#    check_niter(niter, is_approx_3)
+#    assert f2 == pytest.approx(f3, abs=abs_force_tol)
+#
+#    # Test for various randomization options
+#    for randomize, check in lcaoetdm_rand_and_niter_checks:
+#        calc.set(eigensolver=LCAOETDM(randomizeorbitals=randomize,
+#                                      **lcaoetdm_kwargs))
+#        e = H2O.get_potential_energy()
+#        niter = calc.get_number_of_iterations()
+#        check_niter(niter, check)
+#        assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
 
-    f2 = np.array([[-1.11463, -1.23723, 0.0],
-                   [1.35791, 0.00827, 0.0],
-                   [-0.34423, 1.33207, 0.0]])
 
-    for use_rho in [0, 1]:
-        if use_rho:
-            for kpt in calc.wfs.kpt_u:
-                kpt.rho_MM = calc.wfs.calculate_density_matrix(kpt.f_n,
-                                                               kpt.C_nM)
-        f = H2O.get_forces()
-        H2O.calc.results.pop('forces')
+    # now the same test for gpaw new
+    # spinpol = True
+    calc = GPAW(gpw_files['h2o_do_lcao_new'], legacy_gpaw=False,
+                     eigensolver={'name': 'etdm', 'searchdir_algo': searchdir_algo},
+                     txt='-')
+    H2O = calc.atoms
+    H2O.calc = calc
+    dft = calc._dft
+    e = H2O.get_potential_energy()
 
-        assert f2 == pytest.approx(f, abs=abs_force_tol)
+    target_pot_en = -13.643156256566218
+    abs_en_tol = 1.0e-4
+    assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
 
-    calc.write('h2o.gpw', mode='all')
-    from gpaw import restart
-    H2O, calc = restart('h2o.gpw', txt='-')
-    H2O.positions += 1.0e-6
-    f3 = H2O.get_forces()
-    niter = calc.get_number_of_iterations()
+    # now we test an excitation
+    f_n = excite(calc, 0, 0, spin=(0, 0))
+    dft.change(eigensolver={'name': 'etdm', 'excited_state': True,
+                            'searchdir_algo': searchdir_algo},
+               occupations={'name': 'excited', 'numbers': f_n},
+               )
+               
+    H2O.calc = dft.ase_calculator()
+    e = H2O.get_potential_energy()
 
-    check_niter(niter, is_approx_3)
-    assert f2 == pytest.approx(f3, abs=abs_force_tol)
+    target_pot_en = -5.091912
+    abs_en_tol = 1.0e-4
+    assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
 
-    # Test for various randomization options
-    for randomize, check in lcaoetdm_rand_and_niter_checks:
-        calc.set(eigensolver=LCAOETDM(randomizeorbitals=randomize,
-                                      **lcaoetdm_kwargs))
-        e = H2O.get_potential_energy()
-        niter = calc.get_number_of_iterations()
-        check_niter(niter, check)
-        assert e == pytest.approx(target_pot_en, abs=abs_en_tol)

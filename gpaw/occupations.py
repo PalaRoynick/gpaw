@@ -625,8 +625,11 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
                    spin_q,
                    f_qn,
                    fermi_level_guess=nan,
-                   fix_fermi_level=False):
-
+                   fix_fermi_level=False,
+                   f_sn=None):
+        
+        if f_sn is not None:
+            self.f_sn = f_sn
         calc_fixed(self.bd, self.f_sn, f_qn, spin_q)
 
         return inf, 0.0
@@ -636,6 +639,57 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
 
     def __str__(self):
         return f'Fixed occupations:\n{self.f_sn}'
+
+
+class ExcitedOccupations(FixedOccupationNumbers):
+    """ Making a class that takes care of changing occupation numbers when
+        wanting to go to an excited state
+        The class gets initialized inside the excite function in etdm/tools.py
+    """
+    def __init__(self,
+                 numbers,
+                 parallel_layout=None):
+
+        super().__init__(numbers, parallel_layout)
+        self.numbers = np.array(numbers)
+        self.initialized = False
+
+    def todict(self):
+        return {'name': 'excited', 'numbers': self.f_sn}
+
+    def _calculate(self,
+                   nelectrons,
+                   eigenvalues,
+                   weights,
+                   spins,
+                   f_qn,
+                   fermi_levels_guess,
+                   fix_fermi_level=False):
+        assert not fix_fermi_level
+
+        if not self.initialized:
+            self.f_sn = self.numbers.copy()
+            self.initialized = True
+            
+        else:
+            # proviamo a riodinarli internamente
+            for i in range(len(self.numbers)):
+                f = self.f_sn[i]
+                occupied = f > 1.0e-10
+                n_occ = sum(occupied)
+                if n_occ != 0.0 and np.min(f[:n_occ]) == 0:
+                    ind_occ = np.argwhere(occupied)
+                    ind_unocc = np.argwhere(~occupied)
+                    ind = np.vstack((ind_occ, ind_unocc))
+                    ind = np.squeeze(ind)
+                    f = f[ind]
+                    self.f_sn[i] = f
+            
+        super()._calculate(nelectrons, eigenvalues,
+                           weights, spins, f_qn, fermi_levels_guess,
+                           f_sn=self.f_sn)
+
+        return inf, 0.0
 
 
 class FixedOccupationNumbersUniform(OccupationNumberCalculator):
@@ -838,6 +892,8 @@ def create_occ_calc(dct: dict[str, Any],
         return FixedOccupationNumbersUniform(
             nelectrons, nspins, fixed_magmom_value,
             nkpts, nbands, **kwargs)
+    elif name == 'excited':
+        return ExcitedOccupations(**kwargs)
     else:
         raise ValueError(f'Unknown occupation number object name: {name}')
 

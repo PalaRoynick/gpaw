@@ -12,7 +12,7 @@ def test_orthonormalizations_lcao(in_tmp_dir, gpw_files):
     :param in_tmp_dir:
     :return:
     """
-    calc = GPAW(gpw_files['h3_orthonorm_lcao'])
+    calc = GPAW(gpw_files['h3_orthonorm_lcao'], legacy_gpaw=True)
     atoms = calc.atoms
     atoms.calc = calc
 

@@ -73,6 +73,8 @@ def prepare_mom_calculation(calc,
     else:
         if calc._dft is None:
             calc.create_new_calculation(atoms)
+        # attempt  
+        # numbers = numbers[0] / 2
 
     occ_mom = OccupationsMOM(calc.wfs,
                              numbers,
@@ -86,6 +88,7 @@ def prepare_mom_calculation(calc,
         calc.set(occupations=occ_mom, _set_ok=True)
     else:
         calc.dft.scf_loop.occ_calc.occ = occ_mom
+        # calc.dft.scf_loop.occ_calc = occ_mom
         calc.dft.results = {}
 
     calc.log(occ_mom)

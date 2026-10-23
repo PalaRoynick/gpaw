@@ -16,9 +16,9 @@ def test_etdm_maxiter_with_localize_every(in_tmp_dir, gpw_files):
         pytest.skip('See #1406')
 
     from gpaw import restart
-    calc = GPAW(gpw_files['h2o_cdo_lcao_sic'])
+    calc = GPAW(gpw_files['h2o_cdo_lcao_sic'], legacy_gpaw=True)
     calc.write('h2o_restart.gpw', mode='all')
-    H2O, calc = restart('h2o_restart.gpw', txt='-')
+    H2O, calc = restart('h2o_restart.gpw', txt='-', legacy_gpaw=True)
 
     maxiter = 3
     H2O.calc.results.pop('energy')
