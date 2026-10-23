@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
-                                   AtomDistribution)
+from gpaw.core.atom_arrays import (AtomArraysLayout, AtomDistribution,
+                                   block_diag_product)
 from gpaw.core.matrix import Matrix, MatrixWithNoData
 from gpaw.dft import Parameters
 from gpaw.lcao.tci import TCIExpansions
@@ -219,8 +219,7 @@ def tci_helper(basis,
         natoms=len(setups))
     layout = AtomArraysLayout([setup.ni for setup in setups],
                               atomdist=atomdist,
-                              dtype=dtype,
-                              )  # xp=xp)
+                              dtype=dtype)
     nao = setups.nao
 
     P_qaMi = []
@@ -244,9 +243,6 @@ def tci_helper(basis,
         block_diag_product(P_aMi, dO_aii, S_MM)
         domain_comm.sum(S_MM.data)
 
-    # self.atomic_correction= self.atomic_correction_cls.new_from_wfs(self)
-    # self.atomic_correction.add_overlap_correction(newS_qMM)
-
     for S_MM in S_qMM:
         S_MM.tril2full()
     for T_MM in T_qMM:
@@ -260,15 +256,3 @@ def tci_helper(basis,
     P_qaMi = [P_aMi.to_xp(xp) for P_aMi in P_qaMi]
 
     return S_qMM, T_qMM, P_qaMi, tciexpansions, tci_derivatives
-
-
-def block_diag_product(P_aMi: AtomArrays,
-                       block_aii: AtomArrays,
-                       out_MM: Matrix) -> None:
-    M1, M2 = out_MM.dist.my_row_range()
-    P1_aMi = P_aMi[:, M1:M2]
-    PB_aMi = P1_aMi.new()
-    P1_aMi.block_diag_multiply(block_aii, PB_aMi)
-    PB_MI = PB_aMi.matrix
-    PB_MI.complex_conjugate()
-    PB_MI.multiply(P_aMi.matrix, opa='N', opb='T', beta=1.0, out=out_MM)

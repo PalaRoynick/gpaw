@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-
-from gpaw.core.atom_arrays import AtomArrays, AtomArraysLayout
+from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
+                                   block_diag_product)
 from gpaw.core.matrix import Matrix
 from gpaw.external import ExternalPotential
 from gpaw.lfc import BasisFunctions
@@ -59,8 +59,6 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
                                           V_xMM: Array3D = None,
                                           dH_aii: AtomArrays | None = None
                                           ) -> Matrix:
-        from gpaw.new.lcao.builder import block_diag_product
-
         if V_xMM is None:
             V_xMM = self.V_sxMM[wfs.spin]
 
