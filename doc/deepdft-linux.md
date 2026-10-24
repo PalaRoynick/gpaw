@@ -115,10 +115,16 @@ The rootless path uses the **CPU build of Conda-forge `libxc-c`**, not its Pytho
 prefix library name `scalapack`, instead of Debian's `scalapack-openmpi`.
 Compiler and MPI activation is restored by the generated activation script.
 
-Do not combine this private OpenMPI installation with an unrelated site's MPI
-modules or conflicting `LD_LIBRARY_PATH`. Start from a clean shell or unload
-conflicting modules according to site policy. The scripts do not alter system
-MPI configuration. Conda environment registration is disabled using its
+The rootless build and generated activation script isolate the private MPI
+stack from inherited NVIDIA HPC-X/OpenMPI compiler and runtime settings.
+They clear host compiler/linker overrides and MPI-specific settings, filter
+known HPC-X/MPI directories out of runtime paths, then prioritize the private
+prefix. CUDA driver/library paths outside those MPI directories,
+`CUDA_VISIBLE_DEVICES`, and scheduler allocation variables are preserved.
+The scripts do not alter system MPI configuration or shell startup files.
+Sourcing activation changes the current shell's compiler/MPI environment; use
+a subshell if you need to retain a separate host HPC SDK environment afterward.
+Conda environment registration is disabled using its
 supported `register_envs` setting for dependency installation and later use.
 The official Miniforge bootstrap installer still expects `~/.conda` to exist
 or to be creatable by the current user; this needs no administrator rights.
@@ -272,6 +278,9 @@ convergence or predictive accuracy.
 The state directory contains `build.log`, serial/MPI logs, `smoke.log`,
 `smoke.xml`, `training.json`, `python-packages.txt`, `submodules.txt`,
 `gpaw-commit.txt`, `source-status.txt`, `siteconfig.py`, and `activate.sh`.
+Private-prefix builds also write `link-diagnostics.log`: MPI, PMIx, hwloc and
+libevent dependencies must resolve inside that prefix. The preflight links and
+runs a small executable with immediate symbol binding before package builds.
 The rootless profile additionally saves `toolchain-create.log` and an explicit
 Conda package manifest `toolchain-explicit.txt`. Only managed paths are written;
 outputs, environments, downloaded packages and checkpoints must not be committed.
@@ -314,6 +323,35 @@ GPAW references. Do not equate a learned density with a self-consistent solution
 or validated conservative energy/force/stress predictions.
 
 ## 8. Troubleshooting and validation limits
+
+### NVIDIA HPC-X and Conda OpenMPI conflict
+
+Errors such as `undefined reference to PMIx_Proc_construct` or
+`PMIx_Info_destruct`, together with paths from both a private `toolchain/lib`
+and `/opt/nvidia/hpc_sdk/.../hpcx/.../ompi/lib`, indicate incompatible MPI/PMIx
+libraries in the same link. The failure can occur at the prerequisites check
+before installing PyTorch.
+
+The rootless scripts now sanitize inherited MPI/compiler settings before
+Conda activation and verify private-prefix linkage explicitly. To resume an
+existing managed V100 installation after obtaining the fix:
+
+```bash
+git checkout DeepDFT
+git pull --ff-only origin DeepDFT
+bash tools/deepdft/build_user_linux.sh --mode v100
+source .deepdft-build/user-v100/activate.sh
+```
+
+The script reuses the existing managed toolchain, venv and package caches.
+Preserve your original `--env`, `--state-dir` and `--toolchain` arguments if
+you selected custom paths. Review `link-diagnostics.log` if another dependency
+still resolves outside the intended prefix. Regression tests for environment
+isolation can be run with:
+
+```bash
+python -m pytest -q tools/deepdft/tests/test_toolchain_environment.py
+```
 
 | Symptom | Action |
 |---|---|

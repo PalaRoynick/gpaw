@@ -33,6 +33,11 @@ done
 [[ -z $sysroot || -z $dependency_prefix ]] || {
     echo 'Use either --sysroot or --dependency-prefix, not both.' >&2; exit 2;
 }
+if [[ -n $dependency_prefix ]]; then
+    dependency_prefix=$(cd "$dependency_prefix" && pwd)
+    source "$root/tools/deepdft/isolate_toolchain.sh"
+    deepdft_prioritize_prefix "$dependency_prefix"
+fi
 [[ $(uname -m) == x86_64 ]] || { echo 'This pinned wheel profile requires x86_64.' >&2; exit 1; }
 "$python_bin" - <<'PY'
 import sys
@@ -112,10 +117,13 @@ if [[ -n $sysroot ]]; then
     export LIBRARY_PATH="$sysroot/usr/lib/x86_64-linux-gnu:$sysroot/usr/lib/x86_64-linux-gnu/blas${LIBRARY_PATH:+:$LIBRARY_PATH}"
 fi
 scalapack_library=scalapack-openmpi
+link_options=()
 if [[ -n $dependency_prefix ]]; then
     export CPLUS_INCLUDE_PATH="$dependency_prefix/include${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
     export LIBRARY_PATH="$dependency_prefix/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
     scalapack_library=scalapack
+    link_options=("-L$dependency_prefix/lib" "-Wl,-rpath,$dependency_prefix/lib"
+                  "-Wl,-rpath-link,$dependency_prefix/lib" -Wl,--no-allow-shlib-undefined)
 fi
 # Diagnose missing headers/link libraries before expensive Python/C++ builds.
 cat > "$state_dir/prerequisites.cpp" <<'CPP'
@@ -126,7 +134,30 @@ int main() { int a, b; MPI_Get_version(&a, &b); xc_version(&a, &b, &a);
     void* p = fftw_malloc(16); fftw_free(p); return 0; }
 CPP
 mpicxx "$state_dir/prerequisites.cpp" -o "$state_dir/prerequisites" \
-    -lxc -lfftw3 -lblas "-l$scalapack_library"
+    "${link_options[@]}" -lxc -lfftw3 -lblas "-l$scalapack_library"
+if [[ -n $dependency_prefix ]]; then
+    LD_BIND_NOW=1 "$state_dir/prerequisites"
+    ldd "$state_dir/prerequisites" > "$state_dir/link-diagnostics.log"
+    "$venv_dir/bin/python" - "$state_dir/link-diagnostics.log" "$dependency_prefix" <<'PY'
+from pathlib import Path
+import re
+import sys
+report, prefix = sys.argv[1:]
+prefix = Path(prefix).resolve()
+found = set()
+for line in Path(report).read_text().splitlines():
+    match = re.match(r'\s*(lib(?:mpi|open-pal|pmix|prrte|hwloc|event)[\w.-]*)\s+=>\s+(\S+)', line)
+    if not match:
+        continue
+    library, location = match.groups()
+    resolved = Path(location).resolve()
+    if not resolved.is_relative_to(prefix):
+        raise SystemExit(f'Foreign MPI dependency: {library} => {location}; see {report}')
+    found.add(library.split('.so')[0])
+assert {'libmpi', 'libpmix'} <= found, f'MPI/PMIx linkage was not verified; see {report}'
+print('MPI and PMIx dependencies resolve inside the private toolchain.')
+PY
+fi
 cd "$root"
 git submodule update --init --recursive
 git submodule status > "$state_dir/submodules.txt"
@@ -147,7 +178,8 @@ import sys
 out, venv, state, prefix = sys.argv[1:]
 lines = []
 if prefix:
-    lines += [f'export PATH={quote(prefix + "/bin")}:"$PATH"']
+    lines += [f'source {quote(str(Path.cwd() / "tools/deepdft/isolate_toolchain.sh"))}',
+              f'deepdft_prioritize_prefix {quote(prefix)}']
 lines += [f'source {quote(venv + "/bin/activate")}',
          f'export GPAW_CONFIG={quote(state + "/siteconfig.py")}',
          f'export XDG_CACHE_HOME={quote(state + "/cache")}',

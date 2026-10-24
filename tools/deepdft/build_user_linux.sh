@@ -33,6 +33,8 @@ done
     echo 'Check out DeepDFT first.' >&2; exit 1;
 }
 for cmd in python3 git timeout; do command -v "$cmd" >/dev/null; done
+source "$root/tools/deepdft/isolate_toolchain.sh"
+deepdft_clean_host_toolchain
 python3 - <<'PY'
 import platform
 name, version = platform.libc_ver()
@@ -91,14 +93,17 @@ fi
     --mode "$mode" --python "$toolchain/bin/python" --dependency-prefix "$toolchain" \
     --env "$venv_dir" --state-dir "$state_dir" --mpi-ranks "$mpi_ranks"
 # Restore Conda compiler/MPI activation as well as the Python venv in future shells.
-python3 - "$state_dir/activate.sh" "$conda_base" "$toolchain" "$state_dir" <<'PY'
+python3 - "$state_dir/activate.sh" "$conda_base" "$toolchain" "$state_dir" "$root" <<'PY'
 from pathlib import Path
 from shlex import quote
 import sys
-path, base, toolchain, state = sys.argv[1:]
+path, base, toolchain, state, root = sys.argv[1:]
 p = Path(path)
 body = p.read_text()
-header = ('export CONDA_REGISTER_ENVS=false\n'
+helper = Path(root) / 'tools/deepdft/isolate_toolchain.sh'
+header = (f'source {quote(str(helper))}\n'
+          'deepdft_clean_host_toolchain\n'
+          'export CONDA_REGISTER_ENVS=false\n'
           f'export CONDA_PKGS_DIRS={quote(state + "/conda-pkgs")}\n'
           f'export CONDA_ENVS_PATH={quote(state + "/conda-envs")}\n'
           f'export CONDARC={quote(state + "/condarc.yml")}\n'
