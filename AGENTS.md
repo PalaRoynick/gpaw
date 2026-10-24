@@ -4,6 +4,12 @@ The main branch of this repository is `master`. The development branch is `DeepD
 
 Work exclusively in my repository PalaRoynick/gpaw. Create commits and push them only to my development branch (DeepDFT). Never create pull requests or merge requests. Never push changes to the original GPAW GitLab repository. Do not notify, mention, or request reviews from upstream maintainers.
 
+# Mandatory language and access rules
+
+- Every file added or modified in a commit must use English for all prose, including documentation, comments, examples, diagnostic messages, and filenames. Russian and other non-English prose are not permitted in committed files. Commit messages must also be in English. Conversation with the user may remain in Russian.
+- Before every commit, run `python3 tools/check_staged_english.py` and inspect the complete staged files for English-only prose. The checker rejects Cyrillic; it is a guard, not a general language detector. Do not bypass or weaken this rule.
+- Do not assume sudo or administrator access. Prefer the user-space build documented in `doc/deepdft-linux.md`; keep toolchains, dependencies, environments, and build outputs in user-writable directories. NVIDIA driver installation and GPU allocation are host prerequisites, not actions for a rootless build script.
+
 # Agent expertise and responsibilities
 
 - Act as a scientific software developer with expertise in first-principles materials modelling, density functional theory (DFT), the projector-augmented wave (PAW) method, ASE, and GPAW.

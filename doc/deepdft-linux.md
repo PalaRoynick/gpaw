@@ -1,40 +1,42 @@
-# Сборка GPAW + DeepDFT на Linux
+# Building GPAW + DeepDFT on Linux
 
-Эта инструкция относится к **PalaRoynick/gpaw, ветка `DeepDFT`**.
-Сборка не создаёт коммиты, не отправляет изменения и не открывает PR/MR.
-Внешний DeepDFT скачивается как submodule по зафиксированному коммиту.
+This guide applies exclusively to **PalaRoynick/gpaw, branch `DeepDFT`**.
+All committed documentation, comments, examples, messages, and filenames must
+be in English. These build scripts never commit, push, create PRs/MRs, notify
+maintainers, or change the external DeepDFT source.
 
-Минимальный результат: GPAW и ASAP3 собраны из исходников, установлены PAW-наборы,
-работают расчёты GPAW на CPU/MPI, загрузка плотности в DeepDFT, инференс SchNet/PaiNN
-и несколько шагов обучения этих моделей на CPU. Отдельный профиль `v100` переносит
-обучение DeepDFT в PyTorch/CUDA; сам GPAW остаётся CPU/MPI-сборкой.
+The recommended route requires **no sudo**: install Python, compilers, MPI and
+numerical libraries into user-writable directories, then compile GPAW and ASAP3
+from source. DeepDFT is a pinned source submodule. PyTorch uses official binary
+wheels, with separate CPU and NVIDIA V100 training profiles.
 
-Это ещё не DeepDFT-калькулятор GPAW, не SCF-инициализация и не проверенный
-ML-потенциал для сил или молекулярной динамики.
+This is an initial integration environment, not a DeepDFT-backed GPAW
+calculator, SCF initializer, or validated ML energy/force/MD potential.
 
-## 1. Поддерживаемая конфигурация
+## 1. Requirements and scope
 
-| Компонент | Профиль |
+| Component | Requirement |
 |---|---|
-| Архитектура | Linux x86_64; glibc не ниже 2.28 для выбранных колёс PyTorch |
-| ОС | Debian/Ubuntu с OpenMPI; рекомендуются Ubuntu 24.04 или Debian 12/13 |
-| Python | 3.11–3.13; проверка скриптов выполнена на 3.12 |
-| Компилятор | GCC/G++, C++17; MPI-обёртка `mpicxx` |
-| Численные библиотеки | BLAS, LAPACK, LibXC, FFTW, ScaLAPACK/OpenMPI |
-| PyTorch | 2.7.1, официальный индекс `cpu` либо `cu118` |
-| DeepDFT | submodule `third_party/DeepDFT`, ревизия зафиксирована Git |
+| Platform | Linux x86_64; glibc >= 2.28 for the selected PyTorch wheels |
+| Bootstrap | Bash, Git, Python >= 3.8 with working HTTPS certificates, and `timeout` |
+| Storage | User-writable executable filesystem; about 10 GiB for CPU, 15 GiB for CUDA including caches |
+| Memory | At least 8 GiB recommended for dependency resolution and compilation |
+| Rootless toolchain | Python 3.12, GCC/G++/GFortran 13, OpenMPI 5, LibXC C 6.2.2, FFTW, ScaLAPACK, OpenBLAS |
+| Python packages | Pinned in `tools/deepdft/requirements-linux.txt`; PyTorch 2.7.1 installed separately |
+| V100 host prerequisites | An allocated V100 and a working administrator-provided NVIDIA driver |
 
-Версии основных Python-зависимостей закреплены в
-[`tools/deepdft/requirements-linux.txt`](../tools/deepdft/requirements-linux.txt).
-Это проверяемый профиль зависимостей, а не полный lockfile всех транзитивных
-пакетов. После сборки сохраняется полный `pip freeze` для диагностики.
+Rootless installation does not need system Python development headers, a
+system compiler, `apt`, a CUDA toolkit, or `nvcc`. It cannot install a kernel
+GPU driver, grant GPU access, bypass a scheduler, or repair an unsupported host
+OS. A newer driver retaining V100 support can run the selected CUDA 11.8 wheel.
 
-Планируйте не менее 8 ГиБ RAM и 6 ГиБ свободного места для CPU-профиля;
-для CUDA желательно 10–15 ГиБ места, включая кеши пакетов. GPAW/ASAP3 собираются
-без агрессивного распараллеливания компилятора. Увеличивать число MPI-процессов
-при проверке стоит только при наличии соответствующих CPU-ресурсов.
+Choose paths outside read-only or `noexec` filesystems. On a cluster, check
+scratch quotas and retention policies before storing environments there.
+Package resolution requires outbound HTTPS access to GitHub/release assets,
+`conda.anaconda.org`, `pypi.org`, `files.pythonhosted.org`,
+`download.pytorch.org`, and its official download CDN.
 
-## 2. Получение своей ветки и зависимости
+## 2. Clone the personal repository
 
 ```bash
 git clone --branch DeepDFT --recurse-submodules https://github.com/PalaRoynick/gpaw.git
@@ -43,210 +45,249 @@ git branch --show-current
 git submodule status
 ```
 
-Если GPAW уже скачан:
+For an existing checkout:
 
 ```bash
-cd /path/to/gpaw
 git checkout DeepDFT
 git submodule update --init --recursive
 ```
 
-Ожидается ветка `DeepDFT`. Команда инициализации нужна и после последующих
-переключений веток или получения коммита, меняющего submodule.
-Не используйте `git submodule update --remote`: она выбирает другую ревизию,
-а не ту, которая зафиксирована вашей веткой.
+Repeat submodule initialization after receiving a commit that changes its
+revision. Do not use `git submodule update --remote`: use the exact dependency
+commit recorded by this repository. The external MIT-licensed repository
+contains approximately 129 MiB of pretrained checkpoints; GPAW tracks only its
+Git submodule reference, not copied model binaries.
 
-Код, лицензия MIT и предобученные модели остаются во внешнем submodule;
-GPAW хранит ссылку на его коммит. Авторы внешнего проекта не получают запросов
-на ревью от этих скриптов.
+## 3. Recommended: automatic installation without sudo
 
-## 3. Системные зависимости
-
-На Debian/Ubuntu один раз выполните:
+From the checkout root, run:
 
 ```bash
-bash tools/deepdft/install_system_deps.sh
+bash tools/deepdft/build_user_linux.sh --mode cpu
+source .deepdft-build/user-cpu/activate.sh
 ```
 
-Этот отдельный скрипт явно использует `sudo` либо текущие root-права для `apt`.
-Сам скрипт сборки системные пакеты не изменяет и `sudo` не вызывает.
-Эквивалентная ручная установка:
+The script performs the following steps:
+
+1. Downloads the pinned official Miniforge 25.3.0-3 installer, verifies its
+   SHA-256 **before executing it**, and installs it noninteractively under the
+   state directory. It never executes an unverified network response.
+2. Creates a private Conda-forge toolchain containing Python, C/C++/Fortran
+   compilers, OpenMPI, LibXC, FFTW, ScaLAPACK and OpenBLAS.
+3. Creates an isolated Python venv based on that toolchain's Python.
+4. Installs pinned build tools, the selected PyTorch wheel, and Python
+   dependencies. ASAP3 and the current GPAW checkout are built from source.
+5. Runs `pip check`, serial and two-rank MPI GPAW calculations, two pretrained
+   inference checks, and three real Adam training steps for both SchNet/PaiNN.
+6. Writes activation instructions, package manifests and numerical test logs.
+
+It never invokes sudo or `apt`, installs to `/usr`, edits shell startup files,
+or overwrites an unrelated existing environment. TLS and package checksums
+remain enabled. Existing managed environments are reused on subsequent runs.
+Compilers are used conservatively without aggressive parallel compilation.
+
+The default locations are:
+
+- Toolchain, cache and logs: `.deepdft-build/user-cpu/`.
+- Python venv: `venv-deepdft-user-cpu/`.
+- Activation: `.deepdft-build/user-cpu/activate.sh`.
+
+For a server with separate user storage:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y build-essential gfortran pkg-config git ca-certificates \
-  python3-dev python3-venv libblas-dev liblapack-dev libxc-dev libfftw3-dev \
-  libopenmpi-dev openmpi-bin libscalapack-openmpi-dev
-```
-
-Проверьте интерпретатор:
-
-```bash
-python3 --version
-mpicxx --showme
-```
-
-На Ubuntu 22.04 штатный Python 3.10 не подходит этой ветке GPAW: нужен отдельно
-установленный Python 3.11/3.12 с поддержкой `venv` и заголовками своей версии.
-Укажите его через `--python /path/to/python3.12`. Не заменяйте системный Python.
-На кластере можно использовать модули администратора, но все MPI-библиотеки,
-ASAP3 и ScaLAPACK должны относиться к одной совместимой OpenMPI-установке.
-Скрипты рассчитаны на OpenMPI; для MPICH/Intel MPI требуются другие настройки.
-
-Если `apt` не может проверить подписи или получить индексы, исправьте зеркала,
-системное время и доверенные ключи. Не отключайте TLS, проверку подписей или
-контрольных сумм. В облачном образе этой разработки был заблокирован Debian
-snapshot; использовались подписанные пакеты официального `deb.debian.org`.
-
-## 4. Автоматизированная CPU-сборка — рекомендуемый первый запуск
-
-Из корня репозитория:
-
-```bash
-bash tools/deepdft/build_linux.sh --mode cpu --python python3
-```
-
-Скрипт сам:
-
-1. Проверит архитектуру, Python, ветку, компилятор, MPI, заголовки и линковку
-   обязательных библиотек до длительной компиляции.
-2. Инициализирует зафиксированный submodule.
-3. Создаст изолированное окружение `venv-deepdft-cpu` без системных Python-пакетов.
-4. Установит закреплённые инструменты сборки и CPU PyTorch.
-5. Соберёт ASAP3 из исходников; выполнит editable-сборку GPAW из этого checkout
-   с `mpicxx`, LibXC, BLAS, FFTW и ScaLAPACK.
-6. Установит `gpaw-data`, проверит согласованность зависимостей через `pip check`.
-7. Выполнит последовательный и двухпроцессный MPI-расчёты, два теста инференса
-   и три шага Adam для каждой из моделей SchNet/PaiNN на плотности GPAW.
-
-Успех обозначается строкой `All cpu checks passed` и нулевым кодом выхода.
-Пропущенные тесты не считаются успехом. Ошибка останавливает скрипт;
-CUDA-профиль не подменяется молча CPU-профилем.
-
-Сборка в других каталогах:
-
-```bash
-bash tools/deepdft/build_linux.sh \
-  --mode cpu --python /usr/bin/python3.12 \
-  --env /path/to/environments/gpaw-deepdft-cpu \
-  --state-dir /path/to/build-state/gpaw-deepdft-cpu \
+bash tools/deepdft/build_user_linux.sh \
+  --mode cpu \
+  --toolchain /your/writable/path/gpaw-toolchain \
+  --env /your/writable/path/gpaw-python-cpu \
+  --state-dir /your/writable/path/gpaw-build-cpu \
   --mpi-ranks 2
+
+source /your/writable/path/gpaw-build-cpu/activate.sh
 ```
 
-Повторный запуск с теми же путями использует уже установленное окружение и кеш.
-Чужое существующее окружение скрипт не перезаписывает: выбирайте новый путь.
-Окружения CPU и V100 должны иметь разные пути. При обновлении Python или
-смене ABI используйте новое окружение и пересоберите GPAW. В одном editable
-checkout находится одно C++-расширение: не используйте этот checkout одновременно
-с разными версиями Python/несовместимыми ABI.
+Replace the example paths with your actual user-writable directories. If an
+administrator already provides a recent Conda installation, add
+`--conda-base /path/to/conda-base` to skip the bootstrap download. The script creates its own toolchain; it does
+not modify an unrelated existing Conda prefix. Keep CPU and V100 venvs separate.
 
-Для контейнера без root-доступа, в котором уже распакованы **доверенные**
-Debian-пакеты разработки, предусмотрено `--sysroot /path/to/prefix`.
-Ожидается структура `usr/include`, `usr/lib/x86_64-linux-gnu` и
-`usr/lib/x86_64-linux-gnu/openmpi/include`; runtime-библиотеки должны быть
-совместимы с системой. Этот режим не скачивает и не подделывает пакеты.
-Обычной системе с установленными пакетами `apt` эта опция не нужна.
+The rootless path uses the **CPU build of Conda-forge `libxc-c`**, not its Python bindings package
+`libxc`, avoiding an unnecessary Python ABI constraint. It also selects the
+prefix library name `scalapack`, instead of Debian's `scalapack-openmpi`.
+Compiler and MPI activation is restored by the generated activation script.
 
-## 5. Повторная работа и проверка
+Do not combine this private OpenMPI installation with an unrelated site's MPI
+modules or conflicting `LD_LIBRARY_PATH`. Start from a clean shell or unload
+conflicting modules according to site policy. The scripts do not alter system
+MPI configuration. Conda environment registration is disabled using its
+supported `register_envs` setting for dependency installation and later use.
+The official Miniforge bootstrap installer still expects `~/.conda` to exist
+or to be creatable by the current user; this needs no administrator rights.
+For a read-only home without that directory, use an existing `--conda-base`
+provided by the site instead of bootstrapping an installer. Source the generated activation file in every new shell.
 
-После штатной CPU-сборки:
+## 4. NVIDIA V100 training without sudo
+
+The host administrator must already have installed a compatible driver and
+made a V100 available to your process. Check this **inside your GPU allocation**:
 
 ```bash
+nvidia-smi
+```
+
+Then run:
+
+```bash
+bash tools/deepdft/build_user_linux.sh --mode v100
+source .deepdft-build/user-v100/activate.sh
+```
+
+Keep any scheduler-assigned GPU visibility; select a permitted device explicitly
+only on standalone hosts. This profile uses
+**PyTorch 2.7.1 + CUDA 11.8** and requires `sm_70` in the installed wheel.
+Newer PyTorch/CUDA packages may omit Volta support; do not replace this profile
+with the latest wheel without checking its architectures and running the tests.
+
+The script tests the device name, compute capability 7.0, CUDA matrix
+multiplication, finite losses/gradients, and actual weight updates for both
+DeepDFT architectures. It does not silently fall back to CPU when CUDA fails.
+GPAW remains a CPU/MPI build; PyTorch uses the GPU for density-model training.
+CuPy, MAGMA, a GPU GPAW build and a local CUDA toolkit are not required.
+
+For standard CUDA 11.8 configurations, use a Linux driver such as 520.61.05 or
+newer **that still supports V100**, chosen by the server administrator. Consult
+[NVIDIA's CUDA 11.8 release notes](https://docs.nvidia.com/cuda/archive/11.8.0/cuda-toolkit-release-notes/index.html).
+The CUDA version shown by `nvidia-smi` is a driver capability; the Python runtime
+version is reported separately by `torch.version.cuda`.
+
+The baseline uses FP32. V100 does not have native BF16 or TF32 support; do not
+enable them automatically. FP16/AMP needs separate numerical validation.
+These scripts target one GPU, not distributed DeepDFT training.
+
+On a scheduler-managed cluster, request an appropriate GPU job and at least two
+CPU cores, then run the script there. Use the site's scheduler and network
+policy; do not run training on a login node or assume every allocated GPU is a
+V100. Package downloads must be possible during initial setup, or the site must
+provide an appropriate package mirror/cache and a preprovisioned environment.
+No sudo is needed for the user-space packages, but GPU driver and allocation
+problems still require administrator or scheduler action.
+
+### Reported target server
+
+The user reported Ubuntu 22.04.5 LTS, glibc 2.35, NVIDIA driver 580.178.04,
+and six Tesla V100-SXM2-32GB GPUs. These OS, architecture and driver versions
+meet this profile's stated requirements. Ubuntu 22.04's default Python 3.10
+can run the bootstrap; the private toolchain supplies Python 3.12 for GPAW.
+No Python replacement or system development-package installation is needed.
+This is a compatibility assessment from the reported configuration, not a
+claim that training has run on the remote server.
+
+Run the following inside your allocated GPU session:
+
+```bash
+bash tools/deepdft/build_user_linux.sh --mode v100
+source .deepdft-build/user-v100/activate.sh
+python tools/deepdft/check_training.py --device cuda --require-v100
+```
+
+Preserve the scheduler's `CUDA_VISIBLE_DEVICES` setting. The check uses logical
+`cuda:0`, meaning the first GPU visible inside that allocation. On a standalone
+server, select a GPU index only if it is assigned to you, for example:
+
+```bash
+CUDA_VISIBLE_DEVICES=2 bash tools/deepdft/build_user_linux.sh --mode v100
+```
+
+The presence of six cards does not make this a six-GPU training setup. The
+initial profile uses one V100; multi-GPU training requires separate design and
+validation.
+
+## 5. Alternative: administrator-provided system libraries
+
+If the server already has compatible C++/MPI development packages, use the
+existing system-library route without installing anything system-wide:
+
+```bash
+bash tools/deepdft/build_linux.sh --mode cpu --python python3.12
 source .deepdft-build/cpu/activate.sh
+```
+
+It requires Python 3.11-3.13, `mpicxx`, OpenMPI, BLAS/LAPACK, LibXC, FFTW and
+ScaLAPACK development files. On Debian/Ubuntu, an administrator can optionally
+run `bash tools/deepdft/install_system_deps.sh`. **Do not run that installer if
+you lack sudo; use the rootless route instead.**
+
+`--sysroot /path/to/prefix` supports trusted Debian packages already unpacked
+under `usr/include` and `usr/lib/x86_64-linux-gnu`. Alternatively,
+`--dependency-prefix /path/to/conda-prefix` selects a flat `include`/`lib`
+layout with `libscalapack.so`. These options are mutually exclusive; neither
+bypasses package authentication or supplies missing packages automatically.
+
+A source checkout contains one editable GPAW C++ extension. Do not use it
+concurrently with different Python versions or incompatible NumPy/toolchain
+ABIs. Rebuild after switching ABI, toolchain or major dependencies.
+
+## 6. Repeat checks and inspect results
+
+For the recommended rootless CPU profile:
+
+```bash
+bash tools/deepdft/check_linux.sh \
+  --mode cpu --state-dir "$PWD/.deepdft-build/user-cpu"
+```
+
+For V100:
+
+```bash
+bash tools/deepdft/check_linux.sh \
+  --mode v100 --state-dir "$PWD/.deepdft-build/user-v100"
+```
+
+Pass your actual `--state-dir` if you used a custom location. Standalone checks,
+after sourcing the generated activation file, are:
+
+```bash
 gpaw info
-python -c 'import torch; print(torch.__version__)'
-bash tools/deepdft/check_linux.sh
-```
-
-При нестандартных путях используйте `source /your/state-dir/activate.sh`, а затем:
-
-```bash
-bash tools/deepdft/check_linux.sh --state-dir /your/state-dir --mode cpu
-```
-
-При желании повторить отдельные проверки:
-
-```bash
 gpaw test
 mpiexec --bind-to none -n 2 gpaw test
 python -m pytest -q gpaw/test/deepdft/test_smoke.py
 python tools/deepdft/check_training.py --device cpu --steps 3
+# In a V100 allocation:
+python tools/deepdft/check_training.py --device cuda --require-v100 --steps 3
 ```
 
-В MPI-выводе должно быть `cores: 2`; наличие двух запущенных процессов само
-по себе не доказывает параллельную работу GPAW. Старый ключ `gpaw -P` устарел.
-В Docker под root проверяющий скрипт задаёт только нужные OpenMPI-переменные
-разрешения root-запуска; на обычной машине это не требуется.
+Success requires a zero exit status, `cores: 2` in the MPI calculation,
+**two passed inference tests with no skips**, finite training gradients, and
+changed model parameters. `--mpi-ranks 1` is available for single-core hosts,
+but does not establish multi-rank readiness. The old `gpaw -P` shortcut is
+deprecated. Check scripts preserve failing command exit codes and use MPI
+launch timeouts rather than treating a launched process as a passing test.
 
-Численные проверки сохраняют два электрона H2 при экспорте/импорте плотности
-и явно преобразуют e/Å³ в e/Bohr³ при записи cube. Учебный тест проверяет
-конечные loss/градиенты и фактическое изменение весов. Три шага обучения не
-доказывают сходимость, точность относительно DFT или переносимость модели.
+The density round-trip preserves two H2 electrons and explicitly converts
+GPAW's e/angstrom^3 to the cube convention e/Bohr^3. The training check uses
+GPAW-generated spin-summed all-electron density. Its nonperiodic molecular
+model graph is an execution check, not a physical accuracy comparison against
+the periodic reference calculation. Three optimization steps do not establish
+convergence or predictive accuracy.
 
-## 6. NVIDIA Tesla V100: DeepDFT на GPU
+The state directory contains `build.log`, serial/MPI logs, `smoke.log`,
+`smoke.xml`, `training.json`, `python-packages.txt`, `submodules.txt`,
+`gpaw-commit.txt`, `source-status.txt`, `siteconfig.py`, and `activate.sh`.
+The rootless profile additionally saves `toolchain-create.log` and an explicit
+Conda package manifest `toolchain-explicit.txt`. Only managed paths are written;
+outputs, environments, downloaded packages and checkpoints must not be committed.
+Default build/environment paths are ignored by Git.
 
-V100 использует архитектуру **Volta, compute capability 7.0 (`sm_70`)**.
-Официальные колёса последних PyTorch/CUDA могут исключать старые архитектуры,
-поэтому здесь выбран отдельный профиль **PyTorch 2.7.1 + CUDA 11.8**.
-Наличие колёс этого профиля проверено в
-[официальном индексе cu118](https://download.pytorch.org/whl/cu118/torch/).
-Скрипт дополнительно проверяет архитектуры установленного PyTorch и реально
-выполняет CUDA-операции и backward; одного наличия пакета `torch` недостаточно.
+The Python requirements pin primary versions, not every transitive dependency.
+Keep the resulting package manifests for reproducibility and diagnose version
+changes before changing pins. Never disable TLS/signature/checksum verification
+or relax numerical assertions to make an installation pass.
 
-Предварительно установите NVIDIA-драйвер, поддерживающий V100 и CUDA 11.8.
-Для стандартной конфигурации ориентируйтесь на Linux-драйвер **520.61.05 или
-новее, сохраняющий поддержку V100**; конкретную ветку драйвера выбирает
-администратор системы. Сверяйтесь с
-[NVIDIA CUDA 11.8 release notes](https://docs.nvidia.com/cuda/archive/11.8.0/cuda-toolkit-release-notes/index.html).
-Перед запуском `nvidia-smi` должен показывать V100 без ошибок.
-Поле `CUDA Version` в `nvidia-smi` — возможность драйвера, а не версия runtime
-в Python. Runtime скрипт проверяет отдельно через `torch.version.cuda`.
+## 7. Preparing real density training
 
-Для предсобранного PyTorch устанавливать полный CUDA Toolkit, `nvcc`, CuPy или
-GPU-версии GPAW/MAGMA не требуется. CUDA-библиотеки поставляются зависимостями
-PyTorch; рабочий NVIDIA-драйвер на хосте всё равно обязателен.
-
-На машине с V100:
+After passing the execution checks, run the original DeepDFT CLI from its
+working directory, saving outputs **outside the submodule and version control**:
 
 ```bash
-nvidia-smi
-# На узле с несколькими GPU выберите V100:
-export CUDA_VISIBLE_DEVICES=0
-bash tools/deepdft/build_linux.sh --mode v100 --python python3
-source .deepdft-build/v100/activate.sh
-bash tools/deepdft/check_linux.sh \
-  --mode v100 --state-dir "$PWD/.deepdft-build/v100"
-```
-
-Проверка требует V100 среди видимых устройств как `cuda:0`, `sm_70` в сборке
-PyTorch и успешных шагов обучения обеих DeepDFT-моделей на CUDA. В JSON-отчёт
-попадают модель GPU, capability, CUDA runtime, список архитектур и training loss.
-На другом GPU используйте отдельно `check_training.py --device cuda` без
-`--require-v100`; это не будет проверкой V100-профиля.
-
-Используется FP32. Не включайте автоматически BF16 или TF32: V100 не имеет
-их аппаратной поддержки. FP16/AMP можно исследовать отдельно с проверкой
-численной устойчивости. Начинайте обучение на одной GPU; DDP/MPI-обучение
-DeepDFT этими скриптами не настраивается.
-
-CPU-профиль полностью проверен на Debian 13 / Python 3.12.14 в новом окружении,
-с локальным sysroot системных библиотек: оба GPAW-расчёта, два теста инференса
-и по три шага обучения обеих моделей прошли. Повторный запуск полного скрипта
-сборки с тем же окружением и отдельная проверка без переустановки также прошли.
-Пакеты `apt` на Ubuntu в этой среде не устанавливались.
-
-В скачанном официальном колесе PyTorch 2.7.1+cu118 для Python 3.12 проверено
-наличие `sm_70` в `libtorch_cuda.so`. **Видеокарты V100 в облачной среде нет:
-CUDA-инференс и обучение здесь не выполнялись.** Их проверка должна быть
-выполнена указанной командой на целевой машине.
-
-## 7. Дальнейшее обучение плотности
-
-После успешного `check_training.py` можно запускать исходный `runner.py` DeepDFT
-из его рабочего каталога, сохраняя результаты **за пределами submodule**:
-
-```bash
-# Окружение cpu или v100 предварительно активировано.
 cd third_party/DeepDFT
 python runner.py --help
 python runner.py \
@@ -257,52 +298,68 @@ python runner.py \
   --cutoff 4 --num_interactions 3 --node_size 64 --max_steps 1000
 ```
 
-На CPU замените `--device cuda` на `--device cpu`.
-Источник принимает tar с `.cube`/`.CHGCAR` или поддерживаемый им каталог/список
-файлов. Файл разбиения содержит, например,
-`{"train": [0, 1, 2], "validation": [3]}`; индексы относятся к вашему набору.
-Используйте непересекающиеся train/validation/test и фиксируйте порядок структур.
-У исходного runner есть собственные настройки DataLoader и числа проб;
-приведённая команда — шаблон запуска на **подготовленных данных**, а не
-проверенное обучение произвольного набора на тысячу шагов.
+Use `--device cpu` for CPU training. This is a template for a **prepared dataset**,
+not a validated thousand-step experiment on arbitrary user data. The upstream
+runner has its own worker and probe-count settings. Its loader accepts supported
+tar/directory/list inputs containing cube or CHGCAR densities. A split file can
+contain `{"train": [0, 1, 2], "validation": [3]}`; indices refer to the dataset's
+actual structure order. Keep train/validation/test disjoint and record ordering.
 
-До подготовки производственного датасета нужно определить:
+Specify the target density type (pseudo, all-electron, or PAW contribution),
+spin convention, charge, units, normalization, grid, probe coordinates, cell,
+periodic boundary conditions, exchange-correlation functional, PAW datasets and
+reference-calculation convergence. The supplied QM9 models used VASP references
+and nonperiodic molecules; passing inference does not demonstrate accuracy on
+GPAW references. Do not equate a learned density with a self-consistent solution
+or validated conservative energy/force/stress predictions.
 
-- что обучается: псевдоплотность, полная электронная плотность или PAW-вклад;
-- спиновую конвенцию, заряд, единицы и нормировку на число электронов;
-- сетку, координаты проб, ячейку и периодические условия;
-- функционал, PAW-наборы и параметры сходимости эталонных GPAW-расчётов.
+## 8. Troubleshooting and validation limits
 
-Предобученные QM9-модели использовали VASP-референсы и непериодические молекулы.
-Их успешный инференс не подтверждает точность на GPAW-данных. Не выдавайте
-плотность модели за самосогласованное решение и не используйте её как
-проверенный потенциал энергий/сил для MD без отдельной реализации и валидации.
-
-## 8. Логи и устранение ошибок
-
-В `.deepdft-build/<mode>/` либо выбранном `--state-dir` сохраняются:
-
-- `build.log`, `gpaw-serial.log`, `gpaw-mpi.log`, `smoke.log`;
-- `smoke.xml` с результатами ровно двух тестов;
-- `training.json` с loss и сведениями о CPU/CUDA;
-- `python-packages.txt`, `submodules.txt`, `gpaw-commit.txt`, `source-status.txt`;
-- сгенерированные `siteconfig.py`, `activate.sh` и кеши.
-
-Окружения `venv-deepdft-*` и `.deepdft-build/` игнорируются Git.
-Скрипты не удаляют пользовательские данные и не ослабляют тестовые допуски.
-
-| Ошибка | Что проверить |
+| Symptom | Action |
 |---|---|
-| `mpi.h` отсутствует | Установлен ли `libopenmpi-dev`; `mpicxx --showme`; MPI include paths |
-| `xc.h`/`-lxc` отсутствует | `libxc-dev`, а не только runtime-пакет |
-| `undefined symbol` C++/ABI | C++-линкер `mpicxx`, совместимость Python/NumPy, повторная сборка GPAW |
-| `No module named lz4` | Используется ли созданное окружение, выполнена ли установка requirements |
-| Тесты пропущены | Инициализирован ли submodule, установлены ли ML-зависимости; пропуски не являются успехом |
-| MPI сообщает один core | Явный `mpiexec -n 2 gpaw test`; не обычный `python` с serial backend |
-| `not enough slots` | Два выделенных CPU или явный `--mpi-ranks 1` для последовательной проверки; последний вариант не проверяет MPI-параллелизм |
-| `CUDA unavailable` | Драйвер, доступ GPU из контейнера/планировщика, `CUDA_VISIBLE_DEVICES`, wheel `cu118` |
-| `no kernel image`/нет `sm_70` | Не обновился ли PyTorch на wheel без Volta; используйте отдельное окружение `v100` |
-| CUDA out of memory | Размер модели/данных/число проб и занятость V100; базовый training smoke использует 64 пробы |
+| No sudo or system development headers | Use `build_user_linux.sh`; do not run the system package installer |
+| Toolchain solve fails on Python/libxc | Use `libxc-c=6.2.2`; do not substitute the Python bindings package `libxc` |
+| Miniforge checksum mismatch | Stop; verify the official release or choose another destination; do not change the expected hash to match a failed download |
+| HTTPS or package downloads denied | Ask for access to required official destinations or a supported site mirror; keep verification enabled |
+| Environment path already exists | Choose another path; scripts refuse to adopt unrelated environments |
+| `mpi.h`/`xc.h` missing | Ensure the selected prefix supplies headers and that its compiler/MPI activation is active |
+| `undefined symbol` or C++ ABI errors | Restore matching compiler/runtime and rebuild GPAW; do not mix prefixes |
+| `not enough slots` | Allocate two CPU cores or use `--mpi-ranks 1` and report the MPI limitation |
+| MPI reports one core | Use explicit `mpiexec -n 2 gpaw test` with a matching active MPI backend |
+| CUDA unavailable | Check the host driver, GPU allocation, container access, visibility and `cu118` wheel |
+| Missing `sm_70` / no kernel image | Use the pinned V100 wheel, then check actual device execution |
+| CUDA out of memory | Inspect GPU usage; reduce production probe count/model size; the smoke check uses only 64 probes |
+| Read-only or `noexec` storage | Choose user-writable executable storage for toolchain, venv and state |
 
-Для новой версии профиля обновляйте pins осознанно и повторяйте все проверки.
-Не удаляйте модели или результаты обучения ради «чистой» сборки.
+The system-library CPU profile was previously tested on Debian 13 / Python
+3.12.14 with a trusted local sysroot, including repeated builds, serial/MPI
+calculations, both inference models and training steps.
+
+The rootless CPU profile was also built with newly provisioned Python 3.12.15,
+GCC/G++ 13.4.0, OpenMPI 5.0.11 and LibXC 6.2.2 from Conda-forge. Source builds,
+serial/two-rank calculations, both pretrained inference models and three Adam
+steps for each architecture passed. Reusing the managed environment and running
+the checks from a fresh shell both passed. These rootless builds installed no
+system packages and used the private toolchain rather than the earlier sysroot.
+
+An official PyTorch 2.7.1+cu118 CPython 3.12 Linux wheel was inspected and contains
+`sm_70` in `libtorch_cuda.so`. **No NVIDIA GPU is available in this development
+environment; CUDA execution and V100 training must be verified on the target
+server.** Ubuntu system package installation, scheduler integration, full GPAW
+regression suites and scientific ML accuracy benchmarks were not run here.
+
+## 9. English-only commits
+
+All committed files must use English prose, including documentation, comments,
+examples, messages and filenames. Before each commit:
+
+```bash
+git diff --cached --check
+python3 tools/check_staged_english.py
+```
+
+The guard reads complete staged text files and rejects Cyrillic; submodule Git
+references are not text files. It does not detect every non-English language,
+so manually review all staged files as well. Do not weaken the guard or add
+Russian prose to tests or examples. Conversation language is independent of
+repository language.
