@@ -41,6 +41,12 @@ gpaw-upfplot = 'gpaw.upf:main_plot'
 gpaw-log = "gpaw.ase_plugin:io"
 
 [project.optional-dependencies]
+deepdft = [
+    'torch >= 2.6',
+    'asap3',
+    'lz4',
+]
+
 docs = [
     'sphinx-rtd-theme',
     'sphinxcontrib-jquery',
@@ -67,6 +73,7 @@ Issues = 'https://gitlab.com/gpaw/gpaw/issues/'
 version = {attr = 'gpaw.__version__'}
 
 [tool.setuptools.packages.find]
+exclude = ['third_party*']
 # where = ['gpaw']  # why does this fail?
 
 [tool.setuptools.package-data]

@@ -14,6 +14,8 @@ uniform grids combined with multigrid methods.
 
 Webpage: https://gpaw.readthedocs.io/
 
+DeepDFT development branch: see `setup and smoke tests <doc/deepdft.rst>`_.
+
 
 Requirements
 ------------
