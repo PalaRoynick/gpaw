@@ -7,6 +7,9 @@ with GPAW. It does not yet provide a DeepDFT-backed GPAW calculator, an SCF
 initialization interface, or validated ML energies, forces, stress, or dynamics.
 Normal GPAW installation does not require the submodule or ML dependencies.
 
+For automated Linux source builds, CPU validation and an optional NVIDIA V100
+training profile, see the `detailed Linux guide <deepdft-linux.md>`_.
+
 Obtain the dependency
 ---------------------
 
@@ -34,6 +37,9 @@ redistributing its code or models. Do not commit generated datasets or models.
 
 Install
 -------
+
+Prefer the pinned automated scripts in the `Linux guide <deepdft-linux.md>`_.
+The commands below are a manual, unpinned CPU-only alternative.
 
 Use Python 3.11 or newer and the normal GPAW C++ compiler, BLAS, LibXC and PAW
 data prerequisites described in :ref:`installation`. For parallel GPAW builds,
@@ -90,7 +96,10 @@ the periodic GPAW calculation. Density representation, boundary conditions and
 reference-data compatibility must be established before training or physics
 benchmarks; finite predictions alone do not validate the physics.
 
-Verified runtime: Python 3.12.14, GPAW 26.7.1b1, ASE 3.29.0, NumPy 2.3.5,
+Initial integration runtime: Python 3.12.14, GPAW 26.7.1b1, ASE 3.29.0, NumPy 2.3.5,
 SciPy 1.17.0, PyTorch 2.14.1+cpu, ASAP3 3.13.11, lz4 4.4.5, LibXC 5.2.3,
-and OpenMPI 5.0.7. GPU inference, model training, MPI inference and full GPAW
-regression suites are outside these initial checks.
+and OpenMPI 5.0.7. These initial checks covered CPU inference only. The later
+pinned Linux profile also tests CPU forward/backward/optimizer execution;
+see the Linux guide for its versions and separate V100 validation commands.
+GPU execution, MPI inference and full GPAW regression suites have not been
+validated in this development environment.

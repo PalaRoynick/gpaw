@@ -12,6 +12,7 @@ gpaw.egg-info/
 /siteconfig.py
 /siteconfig-*.py
 /venv*/
+/.deepdft-build/
 .coverage
 htmlcov/
 .pytest_cache/
@@ -32,6 +33,7 @@ Makefile
 *.pdf
 *.csv
 *.txt
+!/tools/deepdft/requirements-linux.txt
 *.log
 *.xyz
 *.db

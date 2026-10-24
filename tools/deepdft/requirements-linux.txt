@@ -1,0 +1,9 @@
+# Validated Linux CPU / NVIDIA V100 baseline, Python 3.11-3.13.
+# PyTorch is installed separately from the CPU or cu118 official index.
+numpy==2.2.6
+scipy==1.15.3
+ase==3.29.0
+gpaw-data==1.2.1
+asap3==3.13.11
+lz4==4.4.5
+pytest==9.1.1
