@@ -67,8 +67,9 @@ class PulayMixer(BaseMixer):
         Rc_sX = self.Rc_hsX.next()
         self.add_compensation_charge(R_sX, R_asii, density, out=Rc_sX)
 
-        # Step 2: Calculate the DIIS matrix
         MRc_sX = self.metric(Rc_sX)
+
+        # Step 2: Calculate the DIIS matrix
         MRc_1sX = MRc_sX.new(data=MRc_sX.data[None], dims=(1,) + MRc_sX.dims)
         H_h = self.Rc_hsX.dotprod(MRc_1sX)
         if nh == self.nmaxold:
@@ -89,12 +90,20 @@ class PulayMixer(BaseMixer):
         nt_sX.data[:] = 0
         D_asii.data[:] = 0
         for h, alpha in enumerate(alpha_h):
-            nt_sX.data[:] += alpha * self.nt_hsX[h][0].data
-            D_asii.data[:] += alpha * self.nt_hsX[h][1]
-            nt_sX.data[:] += self.beta * alpha * self.R_hsX[h][0].data
-            D_asii.data[:] += self.beta * alpha * self.R_hsX[h][1]
+            nt_sX.data += alpha * self.Rc_hsX[h][0].data
+
+        self.metric(nt_sX, MRc_sX)
+        MRc_sX.data *= self.beta
+        nt_sX.data[:] = 0
+
+        for h, alpha in enumerate(alpha_h):
+            nt_sX.data += self.beta * alpha * self.R_hsX[h][0].data
+            D_asii.data += self.beta * alpha * self.R_hsX[h][1]
+            nt_sX.data += alpha * self.nt_hsX[h][0].data
+            D_asii.data += alpha * self.nt_hsX[h][1]
 
         # Step 4: Update the density history
+        nt_sX.data[0] -= MRc_sX.data[0, 0]
         self.nt_hsX.add(nt_sX, D_asii)
 
         # Step 5: Return the mixing error

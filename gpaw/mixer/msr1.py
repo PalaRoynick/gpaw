@@ -115,7 +115,6 @@ class MSR1Mixer(BaseMixer):
 
         self.add_compensation_charge(_R_sX, _R_asii, density,
                                      out=self.Rc_hsX.next())
-
         self.metric(self.Rc_hsX[-1], out=self.MRc_hsX.next())
 
         # Step 2: Do a pratt-step if nold <= 1, else discard bad steps
@@ -247,11 +246,11 @@ class MSR1Mixer(BaseMixer):
             self.trust_radius = (self.trust_radius * trust_radius) ** 0.5
 
         self.pk_1sX.data[:] = 0
-        self.uk_1sX.data[:] = self.Rc_hsX[-1].data
+        self.uk_1sX.data[:] = self.MRc_hsX[-1].data
 
         for h, alpha in enumerate(alpha_h):
             self.pk_1sX.data[:] += alpha * s_hsX[h].data
-            self.uk_1sX.data[:] -= alpha * y_hsX[h].data
+            self.uk_1sX.data[:] -= alpha * my_hsX[h].data
 
         predicted_radius = B * self.pk_1sX.norm2().sum()**0.5
         if predicted_radius > self.trust_radius:
@@ -270,11 +269,11 @@ class MSR1Mixer(BaseMixer):
         self.world.broadcast(A, 0)
 
         self.pk_1sX.data[:] = 0
-        self.uk_1sX.data[:] = self.Rc_hsX[-1].data
+        self.uk_1sX.data[:] = self.MRc_hsX[-1].data
 
         for h, beta in enumerate(beta_h):
             self.pk_1sX.data[:] += beta * s_hsX[h].data
-            self.uk_1sX.data[:] -= beta * y_hsX[h].data
+            self.uk_1sX.data[:] -= beta * my_hsX[h].data
 
         # Step 9: Finally mix the densities
         nt_sX.data[:] = self.nt_hsX[-1][0].data
@@ -291,6 +290,9 @@ class MSR1Mixer(BaseMixer):
             nt_sX.data += A * beta * (
                 self.R_hsX[h][0].data - self.R_hsX[-1][0].data)
             D_asii.data += A * beta * (self.R_hsX[h][1] - self.R_hsX[-1][1])
+
+        # Right precond:
+        nt_sX.data[0] -= self.uk_1sX.data[0, 0] * A
 
         # Step 10: Update density history
         if increased_error > self.hard_lim:
@@ -400,17 +402,20 @@ class MSR1Mixer(BaseMixer):
 
     def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
                    density: Density) -> float:
+
+        self.uk_1sX.data[:] = self.MRc_hsX[-1].data
+        self.pk_1sX.data[:] = 0
+
         nt_sX.data[:] = self.nt_hsX[-1][0].data
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
         D_asii.data += self.beta * self.R_hsX[-1][1]
+        nt_sX.data[0] -= self.uk_1sX.data[0, 0] * self.beta
 
         self.nt_hsX.add(nt_sX, D_asii)
         self.add_compensation_charge(nt_sX, D_asii, density,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)
-        self.uk_1sX.data[:] = self.Rc_hsX[-1].data
-        self.pk_1sX.data[:] = 0
         self.last_dNt = self.calculate_charge_sloshing(self.Rc_hsX[-1])
         return self.last_dNt
 
