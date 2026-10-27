@@ -16,6 +16,9 @@ Webpage: https://gpaw.readthedocs.io/
 
 DeepDFT development branch: see `setup and smoke tests <doc/deepdft.rst>`_.
 
+Aluminum density-learning workflow: see `reference data, PaiNN training and
+tiled inference <applications/aluminum_density/README.md>`_.
+
 
 Requirements
 ------------

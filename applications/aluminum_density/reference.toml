@@ -1,0 +1,19 @@
+# Starting protocol only: establish density convergence before production use.
+[reference]
+mode = "fd"
+grid_spacing = 0.16
+xc = "PBE"
+kpoint_density = 4.0
+smearing_ev = 0.01
+density_kind = "pseudo"
+grid_refinement = 1
+extra_bands_percent = 30
+charge = 0.0
+initial_moment = 0.0
+energy_tolerance = 0.000001
+density_tolerance = 0.00001
+eigenstate_tolerance = 0.00000001
+maxiter = 250
+multipoles = 4
+dipole_correction = true
+expected_valence = {Al = 3}

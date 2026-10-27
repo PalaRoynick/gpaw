@@ -73,7 +73,7 @@ Issues = 'https://gitlab.com/gpaw/gpaw/issues/'
 version = {attr = 'gpaw.__version__'}
 
 [tool.setuptools.packages.find]
-exclude = ['third_party*', 'tools*']
+exclude = ['third_party*', 'tools*', 'applications*']
 # where = ['gpaw']  # why does this fail?
 
 [tool.setuptools.package-data]

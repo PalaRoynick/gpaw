@@ -9,6 +9,7 @@ Work exclusively in my repository PalaRoynick/gpaw. Create commits and push them
 - Every file added or modified in a commit must use English for all prose, including documentation, comments, examples, diagnostic messages, and filenames. Russian and other non-English prose are not permitted in committed files. Commit messages must also be in English. Conversation with the user may remain in Russian.
 - Before every commit, run `python3 tools/check_staged_english.py` and inspect the complete staged files for English-only prose. The checker rejects Cyrillic; it is a guard, not a general language detector. Do not bypass or weaken this rule.
 - Do not assume sudo or administrator access. Prefer the user-space build documented in `doc/deepdft-linux.md`; keep toolchains, dependencies, environments, and build outputs in user-writable directories. NVIDIA driver installation and GPU allocation are host prerequisites, not actions for a rootless build script.
+- Keep user-supplied literature, unpublished research context, and private notes outside this checkout. Limit tracked material for the aluminum-density workflow to generic software and methods. Do not publish private motivations, supplied documents, or manuscript metadata.
 
 # Agent expertise and responsibilities
 
