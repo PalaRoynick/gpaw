@@ -36,7 +36,7 @@ done
 if [[ -n $dependency_prefix ]]; then
     dependency_prefix=$(cd "$dependency_prefix" && pwd)
     source "$root/tools/deepdft/isolate_toolchain.sh"
-    deepdft_prioritize_prefix "$dependency_prefix"
+    deepdft_prioritize_prefix "$dependency_prefix" build
 fi
 [[ $(uname -m) == x86_64 ]] || { echo 'This pinned wheel profile requires x86_64.' >&2; exit 1; }
 "$python_bin" - <<'PY'

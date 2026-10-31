@@ -355,3 +355,22 @@ def test_cuda_reference_rejects_fd():
         DensityCalculator(ReferenceSettings(mode="fd"), gpu=True)
     plan = DensityCalculator(ReferenceSettings(mode="pw"), gpu=True).plan(bulk("Al"))
     assert plan["execution_device"] == "cuda"
+
+
+@pytest.mark.parametrize('shadowed', [False, True])
+def test_cuda_environment_rejects_source_shadowing(tmp_path, monkeypatch, shadowed):
+    from gpaw.density_learning import runtime
+
+    prefix = tmp_path / 'venv'
+    monkeypatch.setattr(sys, 'prefix', str(prefix))
+    monkeypatch.setenv('GPAW_CUDA_STATE', str(tmp_path / 'build'))
+    paths = {'gpaw_file': str(prefix / 'lib/gpaw/__init__.py'),
+             'extension_file': str(prefix / 'lib/_gpaw.so')}
+    if shadowed:
+        paths['extension_file'] = str(tmp_path / 'checkout/_gpaw.so')
+    monkeypatch.setattr(runtime, 'loaded_module_paths', lambda: paths)
+    if shadowed:
+        with pytest.raises(RuntimeError, match='Leave all GPAW source checkouts'):
+            runtime.validate_cuda_environment()
+    else:
+        runtime.validate_cuda_environment()

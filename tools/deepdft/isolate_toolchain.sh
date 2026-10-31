@@ -41,17 +41,25 @@ deepdft_clean_host_toolchain() {
 }
 
 deepdft_prioritize_prefix() {
-    local prefix=$1 name entry result
+    local prefix=${1%/} mode=${2:-runtime} name entry result
+    [[ $mode == runtime || $mode == build ]] || {
+        echo 'Prefix mode must be runtime or build.' >&2; return 2;
+    }
     local -a entries=()
     for name in PATH LD_LIBRARY_PATH LIBRARY_PATH; do
         result=
         IFS=: read -r -a entries <<< "${!name-}"
         for entry in "${entries[@]}"; do
-            [[ -n $entry && $entry != "$prefix/bin" && $entry != "$prefix/lib" ]] || continue
+            [[ -n $entry && $entry != "$prefix/bin" && $entry != "$prefix/lib" && $entry != "$prefix/lib/" ]] || continue
             result=${result:+$result:}$entry
         done
         if [[ $name == PATH ]]; then
             export "$name=$prefix/bin${result:+:$result}"
+        elif [[ $name == LD_LIBRARY_PATH && $mode == runtime ]]; then
+            # GPAW and private MPI binaries use their embedded RPATHs. Do not
+            # substitute Conda's ncurses/libstdc++ for unrelated system tools.
+            # Also repair shells activated by an earlier version of this helper.
+            if [[ -n $result ]]; then export "$name=$result"; else unset "$name"; fi
         else
             export "$name=$prefix/lib${result:+:$result}"
         fi

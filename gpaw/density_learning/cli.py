@@ -103,8 +103,11 @@ def main(argv=None):
         from gpaw.mpi import world, broadcast
         from gpaw.density_learning.io import geometry_hash, file_hash
 
+        settings = settings_from_file(args.settings)
         if not args.plan_only:
-            from gpaw.density_learning.runtime import runtime_snapshot
+            from gpaw.density_learning.runtime import runtime_snapshot, validate_cuda_environment
+
+            validate_cuda_environment()
 
             for rank in range(world.size):
                 snapshot = broadcast(
@@ -113,8 +116,9 @@ def main(argv=None):
                 )
                 if world.rank == 0:
                     print(json.dumps({"event": "runtime", "rank": rank,
-                                      "mpi_ranks": world.size, **snapshot}), flush=True)
-        settings = settings_from_file(args.settings)
+                                      "mpi_ranks": world.size,
+                                      "requested_device": "cuda" if args.gpu else "cpu",
+                                      "reference_mode": settings.mode, **snapshot}), flush=True)
         calculator = DensityCalculator(
             settings,
             max_atoms=args.max_atoms,

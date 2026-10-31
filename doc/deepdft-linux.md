@@ -448,3 +448,32 @@ site configuration before changing transport or process-manager settings.
 For native GPAW GPU calculations, see the separate
 [V100 CUDA build guide](deepdft-gpaw-cuda.md). It compiles GPAW kernels in an
 isolated wheel/environment; the original V100 profile remains the PyTorch profile.
+
+### System tools crash after activation
+
+Older activation helpers prepended the private `toolchain/lib` to the shell's
+LD_LIBRARY_PATH. This also replaces dependencies of unrelated system programs,
+including ncurses/tinfo used by htop, and can cause ABI conflicts. The current
+runtime helper prioritizes executable paths and compiler link paths, but removes
+that private runtime entry. GPAW and the private MPI executables rely on their
+embedded RPATH. Build subprocesses explicitly request the build-only library path.
+Existing generated activation scripts source the repository helper, so updating
+the helper and activating in a fresh shell applies this fix without regenerating
+those scripts. Existing binaries still need valid embedded runtime paths.
+
+For immediate diagnosis, `env -u LD_LIBRARY_PATH /usr/bin/htop --version` compares
+system loading with the activated shell. Use that environment override for a
+system tool, not blindly for GPU calculations that may require site CUDA paths.
+If the current shell is already contaminated, open a fresh shell. A subshell can
+contain the full build/runtime environment without affecting the parent shell:
+
+```bash
+(
+    source /your/build/state/activate.sh
+    cd /your/external/work
+    python -m gpaw.density_learning.cli reference ...
+)
+```
+
+This scopes all activation changes, including site CUDA library directories,
+to the calculation. Do not delete private libraries to repair the environment.

@@ -40,7 +40,35 @@ unset LIBRARY_PATH
 deepdft_prioritize_prefix /private/toolchain
 deepdft_prioritize_prefix /private/toolchain
 [[ $PATH == /private/toolchain/bin:/usr/bin:/bin ]]
-[[ $LD_LIBRARY_PATH == /private/toolchain/lib:/site/driver/lib64 ]]
+[[ $LD_LIBRARY_PATH == /site/driver/lib64 ]]
 [[ $LIBRARY_PATH == /private/toolchain/lib ]]
+'''
+    subprocess.run(['bash', '-c', script, 'environment-test', str(HELPER)], check=True)
+
+
+def test_runtime_repairs_old_ld_library_path():
+    script = r'''
+set -euo pipefail
+source "$1"
+export LD_LIBRARY_PATH=/private/toolchain/lib:/site/cuda/lib64:/private/toolchain/lib/
+deepdft_prioritize_prefix /private/toolchain
+[[ $LD_LIBRARY_PATH == /site/cuda/lib64 ]]
+export LD_LIBRARY_PATH=/private/toolchain/lib
+deepdft_prioritize_prefix /private/toolchain
+[[ ! -v LD_LIBRARY_PATH ]]
+'''
+    subprocess.run(['bash', '-c', script, 'environment-test', str(HELPER)], check=True)
+
+
+def test_build_library_path_is_scoped_to_child_shell():
+    script = r'''
+set -euo pipefail
+source "$1"
+export LD_LIBRARY_PATH=/site/driver/lib64
+(
+    deepdft_prioritize_prefix /private/toolchain build
+    [[ $LD_LIBRARY_PATH == /private/toolchain/lib:/site/driver/lib64 ]]
+)
+[[ $LD_LIBRARY_PATH == /site/driver/lib64 ]]
 '''
     subprocess.run(['bash', '-c', script, 'environment-test', str(HELPER)], check=True)
