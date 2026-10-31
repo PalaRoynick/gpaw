@@ -27,8 +27,14 @@ def main(argv=None):
     ref.add_argument("--input", required=True)
     ref.add_argument("--output", required=True)
     ref.add_argument("--settings")
+    ref.add_argument("--gpu", action="store_true",
+                     help="Use the single-rank CUDA PW reference profile")
     ref.add_argument("--max-atoms", type=int, default=256)
     ref.add_argument("--max-density-voxels", type=int, default=100_000_000)
+    ref.add_argument(
+        "--max-wavefunction-gib", type=float,
+        help="Reject FD jobs above estimated total wavefunction storage; not a RAM guarantee",
+    )
     ref.add_argument("--start", type=int, default=0)
     ref.add_argument("--stop", type=int)
     ref.add_argument("--relax-steps", type=int, default=0)
@@ -97,11 +103,24 @@ def main(argv=None):
         from gpaw.mpi import world, broadcast
         from gpaw.density_learning.io import geometry_hash, file_hash
 
+        if not args.plan_only:
+            from gpaw.density_learning.runtime import runtime_snapshot
+
+            for rank in range(world.size):
+                snapshot = broadcast(
+                    runtime_snapshot() if world.rank == rank else None,
+                    root=rank, comm=world,
+                )
+                if world.rank == 0:
+                    print(json.dumps({"event": "runtime", "rank": rank,
+                                      "mpi_ranks": world.size, **snapshot}), flush=True)
         settings = settings_from_file(args.settings)
         calculator = DensityCalculator(
             settings,
             max_atoms=args.max_atoms,
             max_density_voxels=args.max_density_voxels,
+            max_wavefunction_gib=args.max_wavefunction_gib,
+            gpu=args.gpu,
         )
         structures = read(args.input, index=":")
         if args.start < 0 or (args.stop is not None and args.stop < args.start):
@@ -161,6 +180,7 @@ def main(argv=None):
                 atoms.info.get("family", "unspecified"),
                 args.relax_steps,
                 args.fmax,
+                progress=lambda event: print(json.dumps(event), flush=True),
             )
             if world.rank == 0:
                 print(

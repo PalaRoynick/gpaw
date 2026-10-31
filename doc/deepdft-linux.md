@@ -401,3 +401,50 @@ references are not text files. It does not detect every non-English language,
 so manually review all staged files as well. Do not weaken the guard or add
 Russian prose to tests or examples. Conversation language is independent of
 repository language.
+
+### Two singleton processes or insufficient MPI slots
+
+`No PMIx server was reachable, but a PMI1/2 was detected` followed by two
+`rank 0 size 1` lines commonly means an Intel/Hydra launcher started an
+OpenMPI-linked extension, or a scheduler launcher lacks compatible PMIx support.
+The message alone does not identify which executable was used. Confirm launcher
+paths and extension linkage. Loading `intel` or `nvidia` after activation can
+replace the private launcher or runtime libraries. Load required site modules
+first, then source the generated `.deepdft-build/user-v100/activate.sh` last;
+activating only the Python virtual environment is insufficient. Use a new job
+shell when switching stacks. Do not activate/sanitize the environment inside
+an already running MPI task.
+
+Run the diagnostic from the allocated job shell (not through another launcher):
+
+```bash
+bash tools/deepdft/diagnose_mpi.sh .deepdft-build/user-v100
+```
+
+It selects the private launcher, reports relevant allocation and linkage facts,
+and fails unless GPAW sees two communicating ranks. It does not change system
+configuration or force oversubscription. An explicit state directory supports
+builds installed elsewhere.
+
+`There are not enough slots` is a resource/launcher allocation error occurring
+before GPAW executes. It does not demonstrate a failed GPAW build. First request
+two tasks on one node with the site's scheduler. A Slurm example is:
+
+```bash
+salloc --nodes=1 --ntasks=2 --cpus-per-task=1 --time=00:10:00
+# Add the site's required partition/account options to salloc.
+# In the allocation's shell, activate the private build and run the diagnostic.
+```
+
+On systems that require batch jobs, put activation and the diagnostic in an
+`sbatch` script requesting the same resources. Do not wrap `mpiexec` in `srun`.
+Direct `srun --mpi=...` requires a separately verified match between Slurm's
+PMIx plugin and the private OpenMPI installation. Physical CPU count alone does
+not establish the scheduler allocation. Do not use `--oversubscribe` to hide an
+allocation problem in a production calculation. If the matching launcher still
+rejects an adequate allocation, investigate its scheduler integration with the
+site configuration before changing transport or process-manager settings.
+
+For native GPAW GPU calculations, see the separate
+[V100 CUDA build guide](deepdft-gpaw-cuda.md). It compiles GPAW kernels in an
+isolated wheel/environment; the original V100 profile remains the PyTorch profile.

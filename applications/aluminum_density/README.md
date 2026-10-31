@@ -325,3 +325,6 @@ Generic methodological references: the GPAW source documentation under
 formalism (Blochl, Phys. Rev. B 50, 17953, 1994); PBE (Perdew, Burke and
 Ernzerhof, Phys. Rev. Lett. 77, 3865, 1996); the pinned DeepDFT implementation;
 and PaiNN (Schutt, Unke and Gastegger, ICML 2021, arXiv:2102.03150).
+
+See [reference validation](REFERENCE_VALIDATION.md) before generating scientific labels,
+including PAW electrostatics, boundary conditions, spin, relaxation and MPI execution.

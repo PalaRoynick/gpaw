@@ -280,14 +280,27 @@ def test_aluminum_reference_export(in_tmp_dir, comm):
         density_tolerance=1e-4,
         eigenstate_tolerance=1e-6,
     )
+    events = []
     result = DensityCalculator(settings, communicator=comm).calculate(
         bulk("Al", "fcc", a=4.05, cubic=True),
         Path.cwd() / "references",
         "al-bulk",
         "bulk-parent",
         "bulk",
+        progress=events.append,
     )
+    if comm.rank == 0:
+        assert events[0]["event"] == "initialization_started"
+        assert events[-1]["event"] == "reference_completed"
+        assert any(e["event"] == "scf_step" for e in events)
+        times = [e["elapsed_seconds"] for e in events]
+        assert times == sorted(times)
+    else:
+        assert events == []
     sample = load_reference(Path.cwd() / "references/al-bulk.cube")
+    assert result["mpi_ranks"] == comm.size
+    assert result["electrostatic_source_ready"] is False
+    assert result["final_magnetic_moment"] == pytest.approx(0.0)
     assert result["pseudo_compensation_charges"] is False
     assert result["valence_electrons"] == 12.0
     assert all(s["valence"] == 3 for s in result["setups"])
@@ -296,3 +309,49 @@ def test_aluminum_reference_export(in_tmp_dir, comm):
         sample["density"].sum() * sample["atoms"].get_volume() / sample["density"].size
     )
     assert integral == pytest.approx(result["integral_electrons"], abs=1e-7)
+
+
+@pytest.mark.parametrize("budget", [0, -1, float("nan"), float("inf")])
+def test_invalid_wavefunction_budget(budget):
+    from gpaw.density_learning.reference import DensityCalculator
+
+    with pytest.raises(ValueError, match="positive and finite"):
+        DensityCalculator(max_wavefunction_gib=budget)
+
+
+def test_reference_budget_stops_before_calculator(tmp_path, monkeypatch):
+    import gpaw
+    from gpaw.density_learning.reference import DensityCalculator
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("GPAW must not be initialized for an over-budget job")
+
+    monkeypatch.setattr(gpaw, "GPAW", forbidden)
+    atoms = bulk("Al", "fcc", a=4.05, cubic=True)
+    settings = ReferenceSettings(expected_valence={"Al": 3})
+    calculator = DensityCalculator(settings, max_wavefunction_gib=0.01)
+    assert calculator.plan(atoms)["wavefunction_budget_satisfied"] is False
+    with pytest.raises(MemoryError, match="before SCF"):
+        calculator.calculate(atoms, tmp_path / "unused", "bulk", "bulk")
+    assert not (tmp_path / "unused").exists()
+    calculator = DensityCalculator(settings, max_density_voxels=1)
+    with pytest.raises(MemoryError, match="voxel budget before SCF"):
+        calculator.calculate(atoms, tmp_path / "unused", "bulk", "bulk")
+
+
+def test_pw_plan_does_not_claim_fd_storage():
+    from gpaw.density_learning.reference import DensityCalculator
+
+    calculator = DensityCalculator(
+        ReferenceSettings(mode="pw", expected_valence={"Al": 3})
+    )
+    assert calculator.plan(bulk("Al"))["wavefunction_storage_gib_total"] is None
+
+
+def test_cuda_reference_rejects_fd():
+    from gpaw.density_learning.reference import DensityCalculator
+
+    with pytest.raises(ValueError, match="requires PW"):
+        DensityCalculator(ReferenceSettings(mode="fd"), gpu=True)
+    plan = DensityCalculator(ReferenceSettings(mode="pw"), gpu=True).plan(bulk("Al"))
+    assert plan["execution_device"] == "cuda"

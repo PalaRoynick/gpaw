@@ -1,6 +1,7 @@
 """Reusable GPAW reference calculator and provenance-rich cube export."""
 
 from dataclasses import asdict, dataclass, field
+from time import monotonic
 
 import numpy as np
 from ase.optimize import BFGS
@@ -68,11 +69,21 @@ class DensityCalculator:
         communicator=None,
         max_atoms=256,
         max_density_voxels=100_000_000,
+        max_wavefunction_gib=None,
+        gpu=False,
     ):
         self.settings = settings
+        self.gpu = gpu
+        if gpu and settings.mode != "pw":
+            raise ValueError("The CUDA reference profile requires PW mode")
         self.communicator = communicator
         self.max_atoms = max_atoms
         self.max_density_voxels = max_density_voxels
+        if max_wavefunction_gib is not None and (
+            not np.isfinite(max_wavefunction_gib) or max_wavefunction_gib <= 0
+        ):
+            raise ValueError("Wavefunction storage budget must be positive and finite")
+        self.max_wavefunction_gib = max_wavefunction_gib
 
     def plan(self, atoms):
         from ase.calculators.calculator import kpts2sizeandoffsets
@@ -111,17 +122,27 @@ class DensityCalculator:
             * int(np.prod(mesh))
             * bands
             * (2 if s.initial_moment else 1)
-            if known
+            if known and s.mode == "fd"
             else None
         )
         density_voxels = int(np.prod(shape * s.grid_refinement))
         return {
             "natoms": len(atoms),
             "mode": s.mode,
+            "execution_device": "cuda" if self.gpu else "cpu",
             "kpoint_mesh": list(map(int, mesh)),
             "conservative_fd_grid_shape": shape.tolist(),
             "estimated_bands_per_spin": bands,
-            "wavefunction_storage_gib_total": wavefunctions / 2**30 if known else None,
+            "wavefunction_storage_gib_total": (
+                wavefunctions / 2**30 if wavefunctions is not None else None
+            ),
+            "density_voxel_budget_satisfied": density_voxels <= self.max_density_voxels,
+            "wavefunction_budget_gib": self.max_wavefunction_gib,
+            "wavefunction_budget_satisfied": (
+                wavefunctions / 2**30 <= self.max_wavefunction_gib
+                if wavefunctions is not None and self.max_wavefunction_gib is not None
+                else None
+            ),
             "atom_budget_satisfied": len(atoms) <= self.max_atoms,
             "conservative_density_voxels": density_voxels,
             "estimated_cube_bytes": density_voxels * 22,
@@ -137,12 +158,19 @@ class DensityCalculator:
         family="unspecified",
         relax_steps=0,
         fmax=0.02,
+        progress=None,
     ):
         from gpaw import GPAW, PW, FermiDirac, Mixer, __version__
         from gpaw.mpi import world, broadcast
 
         comm = self.communicator if self.communicator is not None else world
         s = self.settings
+        if self.gpu:
+            if comm.size != 1:
+                raise ValueError("The CUDA PBE reference profile requires one MPI rank")
+            from gpaw.gpu import cupy_is_fake
+            if cupy_is_fake:
+                raise RuntimeError("Real CUDA GPAW and an allocated GPU are required")
         if not sample_id or any(
             c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
             for c in sample_id
@@ -152,6 +180,19 @@ class DensityCalculator:
             raise ValueError(
                 "Reference atom budget exceeded; raise max_atoms explicitly if justified"
             )
+        plan = self.plan(atoms)
+        if s.mode == "fd" and not plan["density_voxel_budget_satisfied"]:
+            raise MemoryError("Planned density export exceeds the voxel budget before SCF")
+        if self.max_wavefunction_gib is not None:
+            if plan["wavefunction_storage_gib_total"] is None:
+                raise ValueError(
+                    "Wavefunction budget requires FD mode and expected_valence for all species"
+                )
+            if not plan["wavefunction_budget_satisfied"]:
+                raise MemoryError(
+                    "Planned wavefunction storage exceeds the budget before SCF; "
+                    "this budget excludes workspaces and is not a total RAM limit"
+                )
         output = external_directory(output)
         cube_path = output / (sample_id + ".cube")
         if cube_path.exists() or cube_path.with_suffix(".json").exists():
@@ -181,6 +222,7 @@ class DensityCalculator:
                 "eigenstates": s.eigenstate_tolerance,
             },
             communicator=comm,
+            parallel={"gpu": self.gpu},
             txt=str(output / (sample_id + ".log")),
         )
         if s.mode == "fd":
@@ -197,7 +239,23 @@ class DensityCalculator:
             raise ValueError(
                 "Use FD for open boundaries in this initial reference wrapper"
             )
+        started = monotonic()
+
+        def report(event, **details):
+            if progress is not None and comm.rank == 0:
+                progress({"event": event, "sample_id": sample_id,
+                          "elapsed_seconds": monotonic() - started, **details})
+
+        report("initialization_started", mpi_ranks=comm.size,
+               log_file=str(output / (sample_id + ".log")))
         atoms.calc = GPAW(**kwargs)
+        if progress is not None and not getattr(atoms.calc, "old", False):
+            # Flush initialization lines too; GPAW already flushes SCF rows.
+            if comm.rank == 0:
+                atoms.calc.log.fd.reconfigure(line_buffering=True)
+            atoms.calc.hooks["scf_step"] = lambda ctx: report(
+                "scf_step", iteration=int(ctx.niter))
+            atoms.calc.hooks["converged"] = lambda: report("scf_converged")
         relaxed = False
         if relax_steps:
             relaxed = BFGS(atoms, logfile=str(output / (sample_id + "-relax.log"))).run(
@@ -215,6 +273,7 @@ class DensityCalculator:
                 raise MemoryError(
                     "Density export exceeds the voxel budget; inspect the plan and raise it explicitly"
                 )
+        report("density_export_started")
         options = dict(gridrefinement=s.grid_refinement, broadcast=False)
         if s.density_kind == "pseudo":
             # Current GPAW's ASE get_pseudo_density adds compensation charges.
@@ -223,7 +282,7 @@ class DensityCalculator:
                 field = calc.dft.densities().pseudo_densities(
                     grid_refinement=s.grid_refinement, add_compensation_charges=False
                 )
-                field = field.gather(broadcast=False)
+                field = field.to_xp(np).gather(broadcast=False)
                 density = None if field is None else field.data.sum(axis=0)
             else:
                 density = calc.get_pseudo_density(**options)
@@ -231,6 +290,7 @@ class DensityCalculator:
             density = calc.get_all_electron_density(
                 skip_core=s.density_kind == "valence", **options
             )
+        final_magnetic_moment = float(calc.get_magnetic_moment())
         metadata = None
         error = None
         wrote_cube = False
@@ -280,6 +340,15 @@ class DensityCalculator:
                     "family": family,
                     "density_kind": s.density_kind,
                     "pseudo_compensation_charges": False,
+                    "electrostatic_source_ready": False,
+                    "electrostatic_source_note": (
+                        "Density-only export: ionic and PAW electrostatic contributions "
+                        "are not exported. Do not combine smooth pseudo density with "
+                        "point valence ions or normalize it to the valence count."
+                    ),
+                    "mpi_ranks": comm.size,
+                    "execution_device": "cuda" if self.gpu else "cpu",
+                    "final_magnetic_moment": final_magnetic_moment,
                     "input_geometry_sha256": input_hash,
                     "units": "electron/angstrom^3",
                     "cube_units": "electron/Bohr^3",
@@ -323,4 +392,5 @@ class DensityCalculator:
         (error,) = broadcast((error,) if comm.rank == 0 else None, comm=comm)
         if error:
             raise RuntimeError(error)
+        report("reference_completed")
         return broadcast(metadata, comm=comm)
