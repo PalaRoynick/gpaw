@@ -162,7 +162,7 @@ class FDPotentialCalculator(PotentialCalculator):
                 nt_r.data *= scale
 
         F_avL = self.ghat_aLr.derivative(potential.vHt_x)
-        force_av = np.zeros((len(Q_aL), 3))
+        force_av = self.xp.zeros((len(Q_aL), 3))
         for a, dF_vL in F_avL.items():
             force_av[a] += dF_vL @ Q_aL[a]
 

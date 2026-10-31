@@ -433,3 +433,16 @@ def test_ml_auto_device(monkeypatch, available):
     monkeypatch.setattr(torch.cuda, 'get_arch_list', lambda: ['sm_70'])
     assert device_check('auto') == ('cuda' if available else 'cpu')
     assert device_check('cpu') == 'cpu'
+
+
+
+def test_fd_cuda_relaxation_stops_before_native_forces(tmp_path, monkeypatch):
+    from gpaw.density_learning import devices
+    from gpaw.density_learning.reference import DensityCalculator
+
+    monkeypatch.setattr(devices, 'cuda_status', lambda: True)
+    calculator = DensityCalculator(ReferenceSettings(mode='fd'), device='cuda',
+                                   experimental_fd_gpu=True)
+    with pytest.raises(RuntimeError, match='FD CUDA relaxation is disabled'):
+        calculator.calculate(bulk('Al'), tmp_path / 'unused', 'al', 'al', relax_steps=1)
+    assert not (tmp_path / 'unused').exists()

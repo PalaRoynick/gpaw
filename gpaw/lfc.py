@@ -679,6 +679,17 @@ class LocalizedFunctionsCollection(BaseLFC):
 
         """
 
+        # The native derivative routines consume NumPy arrays, unlike add_gpu
+        # and integrate_gpu. Never pass CuPy objects into their NumPy C API.
+        if (not isinstance(a_xG, np.ndarray) or
+                any(not isinstance(value, np.ndarray) for value in c_axiv.values())):
+            host_input = as_np(a_xG)
+            host_output = {a: as_np(value).copy() for a, value in c_axiv.items()}
+            self.derivative(host_input, host_output, q=q)
+            for a, value in host_output.items():
+                c_axiv[a][...] = as_xp(value, self.xp)
+            return
+
         assert not self.use_global_indices
 
         if debug:

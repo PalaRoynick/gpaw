@@ -52,3 +52,25 @@ def test_invalid_source_is_not_partially_installed(tmp_path):
     with pytest.raises(SyntaxError):
         module.update(source, site, tmp_path / 'backups')
     assert not (site / 'gpaw/density_learning').exists()
+
+
+
+def test_opt_in_fd_core_python_update(tmp_path):
+    source, site = tmp_path / 'gpaw/density_learning', tmp_path / 'site'
+    source.mkdir(parents=True)
+    (source / '__init__.py').touch()
+    target = site / 'gpaw'
+    target.mkdir(parents=True)
+    (target / '__init__.py').touch()
+    for name in ('lfc.py', 'new/fd/pot_calc.py'):
+        src, dest = source.parent / name, target / name
+        src.parent.mkdir(parents=True, exist_ok=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text('value = 2\n')
+        dest.write_text('value = 1\n')
+    module.update(source, site, tmp_path / 'backup')
+    assert (target / 'lfc.py').read_text() == 'value = 1\n'
+    saved = module.update(source, site, tmp_path / 'backup', fd_force_fix=True)
+    assert (target / 'lfc.py').read_text() == 'value = 2\n'
+    assert (saved / 'core/lfc.py').read_text() == 'value = 1\n'
+    assert (saved / 'core/new/fd/pot_calc.py').read_text() == 'value = 1\n'

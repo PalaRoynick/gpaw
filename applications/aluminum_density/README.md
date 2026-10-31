@@ -262,3 +262,58 @@ backend selection and staged Poisson equivalence. Real FD CUDA hardware acceptan
 remains separate. A complete fake-CuPy FD trial on this executor crashed and is
 not counted as a passing test. No GPU results are fabricated or inferred from
 CPU/array-emulation success. No datasets, weights, PAW files or builds enter Git.
+
+
+## Localizing an FD CUDA native crash
+
+A force table is not sufficient to locate a segfault: the original test runs CPU
+first, then GPU, and extracts density after forces. Inspect both backend logs.
+The checker now enables Python faulthandler and emits flushed started/completed
+events for calculator creation, SCF, forces, density construction, host transfer,
+gather and log closure. Use a fresh output directory for each attempt:
+
+```bash
+CUDA_LAUNCH_BLOCKING=1 python "$PROJECT/tools/deepdft/check_gpaw_cuda.py" \
+  --mode fd --family bulk --backend cuda --sync-gpu --require-v100 \
+  --output "$WORK/fd-cuda-diagnostic-001"
+```
+
+To isolate density from force evaluation, add `--skip-forces`. Single-backend
+runs and runs skipping forces always report `gpu_validated: false`; they cannot
+certify a force backend. Synchronization is diagnostic overhead, not a timing
+benchmark. The current FD LFC derivative path enters CPU C code expecting NumPy
+arrays; that is a candidate native-crash path when passed device arrays. No
+kernel repair is claimed without real-device validation. FD CUDA ionic
+relaxation is now blocked before calling native forces; use CPU FD relaxation.
+
+The default CPU/GPU acceptance now runs each backend in a separate subprocess.
+Worker stdout/stderr are streamed and saved as `cpu-worker.log`/`cuda-worker.log`;
+GPAW logs and numerical results live under `cpu/` and `cuda/`. A failed worker
+writes `failure.json` with its return code and signal and prevents acceptance,
+even if it wrote intermediate results before crashing. This isolates calculator
+lifetimes; it is not claimed to repair a native FD backend defect.
+
+
+### Confirmed FD localized-function force crash
+
+A real V100 trace located a crash in `gpaw/lfc.py:derivative`: its native C routine
+expects NumPy arrays but received a CuPy object. The Python fix stages derivative
+inputs and outputs through host memory, including normalized and complex-valued
+cases. The FD compensation-force accumulator now uses the same array backend
+as its inputs, avoiding a subsequent NumPy/CuPy mix.
+These changes affect only `gpaw/lfc.py` and `gpaw/new/fd/pot_calc.py`; CUDA kernels
+and `_gpaw.so` do not need rebuilding. Install those files explicitly:
+
+```bash
+/path/to/cuda-build/venv/bin/python \
+  "$PROJECT/tools/deepdft/update_python_adapters.py" --include-fd-force-fix --dry-run
+/path/to/cuda-build/venv/bin/python \
+  "$PROJECT/tools/deepdft/update_python_adapters.py" --include-fd-force-fix
+```
+
+The opt-in flag extends the updater's fixed allowlist by exactly those two core
+Python files. Both are backed up and native-extension hashes remain checked.
+Without the flag, core files are not changed. Rerun real CPU/GPU acceptance on
+bulk, slab and finite families. A Python fix plus array emulation is not proof
+that every FD GPU operation is supported. FD GPU relaxation remains blocked
+pending successful force-backend validation on actual hardware.

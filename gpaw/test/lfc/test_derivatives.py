@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from gpaw.lfc import LocalizedFunctionsCollection as LFC
 from gpaw.old.grid_descriptor import GridDescriptor
@@ -49,3 +50,29 @@ def test_lfc_derivatives():
             C0_n /= -2 * eps
             assert abs(C0_n - d_aniv[0][:, 0, v]).max() < 1e-8
         pos_av[0, v] += eps
+
+
+@pytest.mark.parametrize('kind', ['real', 'complex', 'normalized'])
+def test_lfc_device_derivative_stages_native_inputs(kind):
+    from gpaw.gpu import cupy as xp, as_np
+
+    gd = GridDescriptor(N_c=[16, 16, 16], cell_cv=[5.0, 5.0, 5.0], pbc_c=False)
+    spline = Spline.from_data(l=0, rmax=1.8, f_g=np.array([1, .7, .1, 0]))
+    from gpaw.old.kpt_descriptor import KPointDescriptor
+    kd = KPointDescriptor(np.array([[0.125, 0, 0]])) if kind == 'complex' else None
+    c = LFC(gd, [[spline]], cut=True, forces=True, kd=kd,
+            dtype=complex if kind == 'complex' else float,
+            integral=1.0 if kind == 'normalized' else None)
+    c.set_positions(np.array([[.5, .5, .5]]))
+    x, y, z = gd.get_grid_point_coordinates()
+    values = np.exp(-((x - 2.1)**2 + (y - 2.4)**2 + (z - 2.5)**2))
+    if kind == 'complex':
+        values = values * (1 + .2j)
+    q = 0 if kind == 'complex' else -1
+    reference = c.dict(derivative=True)
+    c.derivative(values, reference, q=q)
+    output = {a: xp.zeros(value.shape, dtype=value.dtype) for a, value in reference.items()}
+    c.xp = xp
+    c.derivative(xp.asarray(values), output, q=q)
+    for a, value in reference.items():
+        np.testing.assert_allclose(as_np(output[a]), value, rtol=0, atol=1e-12)

@@ -216,3 +216,13 @@ Applications/settings/test scripts remain in the checkout, not in site-packages.
 Use the checkout's `tools/deepdft/check_gpaw_cuda.py` to test new adapter features,
 not an older copy under the build state's source snapshot. Use a new Python
 process after updating and perform updates between calculation jobs.
+
+
+For the confirmed FD localized-function derivative crash, Python-only core fixes
+are available through `update_python_adapters.py --include-fd-force-fix`.
+This explicitly adds `gpaw/lfc.py` and `gpaw/new/fd/pot_calc.py` to the updater's
+allowlist; it does not replace `_gpaw.so`. The derivative calculation is staged
+to host NumPy because the existing C derivative routine is CPU-only. The FD
+compensation-force accumulator uses its execution backend consistently. Run the
+full real-GPU energy/force/density comparisons again after installation; array
+emulation and CPU tests do not establish V100 acceptance.
