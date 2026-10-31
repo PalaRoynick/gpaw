@@ -24,11 +24,12 @@ bash tools/deepdft/build_gpaw_cuda.sh \
   --state-dir "$HOME/gpaw-cuda-v100"
 ```
 
-The default downloads selected CUDA 12.6 components from NVIDIA's 12.6.3 labeled Conda channel
+When no site `nvcc` is found, the script downloads selected CUDA 12.6 components from NVIDIA's 12.6.3 labeled Conda channel
 and uses conda-forge for dependencies. It avoids the full toolkit metapackage
 and its unrelated graphics dependencies. Allow several GB for CUDA, compilers,
 wheels and build intermediates. The script never installs a driver or uses sudo.
-To use an existing complete CUDA 12.6 installation, append
+The script captures a module-provided `nvcc` before activating its private MPI
+toolchain. To use an existing complete CUDA 12.6-12.9 installation, append
 `--cuda-root /path/to/cuda-12.6` (nvcc, headers, runtime and cuBLAS development
 libraries are required). Do not use CUDA library stub directories at runtime.
 
@@ -124,3 +125,43 @@ use separate scheduler jobs/array elements with disjoint output directories.
 PW is the supported profile here. The source contains experimental FD GPU tests,
 but this build does not certify FD/open-boundary GPU labels or multi-GPU PBE.
 PAW datasets, wheels, toolkit, density cubes and validation logs remain outside Git.
+
+## Conda timeouts and site CUDA modules
+
+A repodata ReadTimeout occurs before compilation. Loading `ml nvidia` supplies
+CUDA but does not make older script revisions automatically use it. With those
+revisions, pass `--cuda-root` explicitly (only CUDA 12.6 is accepted there).
+The revised script detects module-provided nvcc before private activation and
+supports CUDA 12.6-12.9. It rejects CUDA 13 rather than attempting Volta compilation.
+Use `--download-cuda` to explicitly bypass a site toolkit and provision CUDA 12.6.
+
+Inspect the toolkit after loading the site module:
+
+```bash
+ml nvidia
+command -v nvcc
+nvcc --version
+source tools/deepdft/select_cuda.sh
+CUDA_SITE_ROOT=$(deepdft_select_cuda)
+bash tools/deepdft/build_gpaw_cuda.sh \
+  --cuda-root "$CUDA_SITE_ROOT" \
+  --state-dir "$HOME/gpaw-cuda-v100-site" --compile-only
+```
+
+Choose a fresh state directory after a failed attempt; do not delete working
+builds. Site-toolkit mode skips Conda CUDA downloads, but Python packages may
+still need PyPI access or an existing pip cache. Site modules may contain several
+CUDA versions; select the actual compatible directory, not an arbitrary SDK root.
+The module's MPI is not used in place of the private OpenMPI build.
+
+When provisioning is necessary, metadata connect/read timeouts default to 30/120
+seconds and retries to 5 for that one command. Override them via the corresponding
+`CONDA_REMOTE_CONNECT_TIMEOUT_SECS`, `CONDA_REMOTE_READ_TIMEOUT_SECS`, and
+`CONDA_REMOTE_MAX_RETRIES` environment variables. Longer timeouts help a slow
+connection; they do not repair blocked network access.
+
+NVIDIA HPC SDK can expose `compilers/bin/nvcc` as a wrapper. Its parent directory
+is not necessarily the CUDA development root. Discovery checks the resolved
+compiler root and sibling `cuda/<version>` and `cuda` directories for runtime
+headers plus cuBLAS and cudart development libraries. If none qualifies, it fails
+before downloads rather than guessing an incompatible toolkit.

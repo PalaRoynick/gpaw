@@ -6,20 +6,33 @@ base=$root/.deepdft-build/user-v100
 state=$root/.deepdft-build/gpaw-cuda-v100
 cuda=
 compile_only=0
+download_cuda=0
 while (($#)); do
     case "$1" in
         --base-state) base=${2:?}; shift 2 ;;
         --state-dir) state=${2:?}; shift 2 ;;
         --cuda-root) cuda=${2:?}; shift 2 ;;
+        --download-cuda) download_cuda=1; shift ;;
         --compile-only) compile_only=1; shift ;;
         --help)
             echo 'Usage: build_gpaw_cuda.sh [--base-state DIR] [--state-dir NEW_DIR]'
-            echo '       [--cuda-root CUDA_12_6_DIR] [--compile-only]'
-            echo 'Requires a completed rootless CPU/v100 build. Default provisions CUDA 12.6.3.'
+            echo '       [--cuda-root CUDA_12_DIR | --download-cuda] [--compile-only]'
+            echo 'Requires a completed rootless CPU/v100 build. Prefers nvcc on PATH; otherwise provisions CUDA 12.6 components.'
             exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
+[[ -z $cuda || $download_cuda == 0 ]] || {
+    echo 'Use --cuda-root or --download-cuda, not both.' >&2; exit 2;
+}
+source "$root/tools/deepdft/select_cuda.sh"
+# Capture the module-provided toolkit before activation sanitizes MPI paths.
+if (( ! download_cuda )); then
+    cuda=$(deepdft_select_cuda "$cuda")
+fi
+if [[ -n $cuda ]]; then
+    deepdft_check_cuda_version "$cuda"
+fi
 base=$(cd "$base" && pwd)
 [[ -f $base/activate.sh && -f $base/toolchain/.gpaw-deepdft-toolchain ]] || {
     echo 'Select a completed rootless build state with its private toolchain.' >&2; exit 2;
@@ -33,6 +46,10 @@ unset GPAW_CPUPY GPAW_USE_GPUS
 export GPAW_NO_GPU_MPI=1
 if [[ -z $cuda ]]; then
     cuda=$state/cuda
+    # Bound slow metadata requests without changing the user's Conda config.
+    CONDA_REMOTE_CONNECT_TIMEOUT_SECS=${CONDA_REMOTE_CONNECT_TIMEOUT_SECS:-30} \
+    CONDA_REMOTE_READ_TIMEOUT_SECS=${CONDA_REMOTE_READ_TIMEOUT_SECS:-120} \
+    CONDA_REMOTE_MAX_RETRIES=${CONDA_REMOTE_MAX_RETRIES:-5} \
     "$CONDA_EXE" create --yes --prefix "$cuda" --override-channels \
         --channel nvidia/label/cuda-12.6.3 --channel conda-forge \
         cuda-version=12.6 cuda-nvcc=12.6 cuda-cudart-dev=12.6 \
@@ -41,10 +58,7 @@ if [[ -z $cuda ]]; then
     "$CONDA_EXE" list --prefix "$cuda" --explicit > "$state/cuda-explicit.txt"
 fi
 cuda=$(cd "$cuda" && pwd)
-"$cuda/bin/nvcc" --version | tee "$state/nvcc-version.txt"
-grep -q 'release 12.6,' "$state/nvcc-version.txt" || {
-    echo 'This V100 profile requires CUDA 12.6; CUDA 13 cannot target sm_70.' >&2; exit 2;
-}
+deepdft_check_cuda_version "$cuda" | tee "$state/nvcc-version.txt"
 host=$(command -v "${CXX:-g++}")
 "$host" --version > "$state/host-compiler-version.txt"
 git -C "$root" rev-parse HEAD > "$state/source-commit.txt"
