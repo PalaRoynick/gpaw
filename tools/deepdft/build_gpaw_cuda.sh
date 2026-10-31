@@ -70,24 +70,25 @@ python_bin=$state/venv/bin/python
     'gpaw-data==1.2.1' 'cupy-cuda12x==13.6.0'
 export CUDA_PATH="$cuda"
 export PATH="$cuda/bin:$PATH"
-export LD_LIBRARY_PATH="$cuda/lib64:$cuda/lib:$cuda/targets/x86_64-linux/lib:${LD_LIBRARY_PATH-}"
+cuda_library_path=$("$python_bin" -c 'import json,sys; print(":".join(json.load(open(sys.argv[1]))))' "$state/cuda-library-paths.json")
+export LD_LIBRARY_PATH="$cuda_library_path:${LD_LIBRARY_PATH-}"
 export GPAW_CONFIG="$state/siteconfig.py"
 cd "$state/source"
 "$python_bin" -m pip wheel --verbose --no-build-isolation --no-deps --wheel-dir "$state/wheels" .
 "$python_bin" -m pip install --no-deps "$state"/wheels/gpaw-*.whl
 "$python_bin" -m pip check
 "$python_bin" -m pip freeze > "$state/python-packages.txt"
-"$python_bin" - "$base" "$state" "$cuda" <<'PY'
+"$python_bin" - "$base" "$state" "$cuda" "$cuda_library_path" <<'PY'
 from pathlib import Path
 from shlex import quote as q
 import sys
-base, state, cuda = sys.argv[1:]
+base, state, cuda, cuda_libraries = sys.argv[1:]
 lines = [f'source {q(base + "/activate.sh")}',
          f'source {q(state + "/venv/bin/activate")}',
          f'export GPAW_CONFIG={q(state + "/siteconfig.py")}',
          f'export CUDA_PATH={q(cuda)}',
          f'export PATH={q(cuda + "/bin")}:"$PATH"',
-         f'export LD_LIBRARY_PATH={q(cuda + "/lib64:" + cuda + "/lib:" + cuda + "/targets/x86_64-linux/lib")}:"${{LD_LIBRARY_PATH-}}"',
+         f'export LD_LIBRARY_PATH={q(cuda_libraries)}:"${{LD_LIBRARY_PATH-}}"',
          'export GPAW_NO_GPU_MPI=1',
          'unset GPAW_CPUPY GPAW_USE_GPUS',
          f'export GPAW_CUDA_STATE={q(state)}']

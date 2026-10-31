@@ -163,5 +163,23 @@ connection; they do not repair blocked network access.
 NVIDIA HPC SDK can expose `compilers/bin/nvcc` as a wrapper. Its parent directory
 is not necessarily the CUDA development root. Discovery checks the resolved
 compiler root and sibling `cuda/<version>` and `cuda` directories for runtime
-headers plus cuBLAS and cudart development libraries. If none qualifies, it fails
+headers and cudart development libraries. cuBLAS is checked separately during
+preparation. If none qualifies, it fails
 before downloads rather than guessing an incompatible toolkit.
+
+## Split NVIDIA HPC SDK libraries
+
+The runtime and cuBLAS need not share a directory. Preparation searches the CUDA
+root plus sibling `math_libs/<CUDA major.minor>` and `math_libs` roots. It checks
+`cuda_runtime.h`, `cublas_v2.h`, `libcudart.so`, and `libcublas.so` independently.
+Selected library directories are saved in `cuda-library-paths.json` and used both
+for linking/rpath and generated runtime activation. Missing files are reported by
+name together with the toolkit root and searched directories. Versioned runtime
+files alone are not accepted as a substitute for development linker symlinks.
+An explicit `--cuda-root` pointing at HPC SDK `compilers` is normalized to the
+sibling toolkit when that layout can be identified.
+
+The toolkit root need not contain `bin/nvcc`: HPC SDK may keep the compiler in
+sibling `compilers/bin/nvcc` while headers and runtime live in `cuda`. The selected
+compiler path is used explicitly in siteconfig; CUDA_PATH refers to the header/
+runtime root. These paths are distinct from the private GCC host compiler.

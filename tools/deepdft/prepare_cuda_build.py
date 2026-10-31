@@ -9,17 +9,63 @@ import shlex
 import subprocess
 
 
+def cuda_compiler(cuda):
+    cuda = cuda.resolve()
+    sdk = cuda.parent.parent if cuda.parent.name == 'cuda' else cuda.parent
+    for path in (cuda / 'bin/nvcc', sdk / 'compilers/bin/nvcc'):
+        if path.is_file():
+            return path
+    raise ValueError(f'No nvcc found for CUDA root: {cuda}')
+
+
+def cuda_layout(cuda):
+    """Find runtime and cuBLAS independently, including HPC SDK math_libs."""
+    cuda = cuda.resolve()
+    version_text = subprocess.check_output([str(cuda_compiler(cuda)), '--version'], text=True)
+    import re
+    match = re.search(r'release ([0-9]+\.[0-9]+),', version_text)
+    version = match[1] if match else ''
+    sdk = cuda.parent.parent if cuda.parent.name == 'cuda' else cuda.parent
+    roots = [cuda, sdk / 'math_libs' / version, sdk / 'math_libs']
+    include_candidates = list(dict.fromkeys(
+        p for root in roots for p in (root / 'include', root / 'targets/x86_64-linux/include')
+    ))
+    library_candidates = list(dict.fromkeys(
+        p for root in roots for p in (root / 'lib64', root / 'lib',
+                                     root / 'targets/x86_64-linux/lib')
+    ))
+    includes, libraries, missing = [], [], []
+    for filename, candidates, selected in [
+        ('cuda_runtime.h', include_candidates, includes),
+        ('cublas_v2.h', include_candidates, includes),
+        ('libcudart.so', library_candidates, libraries),
+        ('libcublas.so', library_candidates, libraries),
+    ]:
+        found = next((p for p in candidates if (p / filename).is_file()), None)
+        if found is None:
+            missing.append(filename)
+        elif found not in selected:
+            selected.append(found)
+    if missing:
+        raise ValueError(
+            'Missing CUDA development files: ' + ', '.join(missing)
+            + '\nSelected toolkit: ' + str(cuda)
+            + '\nSearched includes: ' + ', '.join(map(str, include_candidates))
+            + '\nSearched libraries: ' + ', '.join(map(str, library_candidates))
+            + '\nSelect the CUDA development root, not compilers/. '
+              'Versioned runtime libraries alone do not supply linker development symlinks.'
+        )
+    return includes, libraries
+
+
 def prepare(root, state, base, cuda, host):
     source = state / 'source'
     if source.exists():
         raise FileExistsError(f'Use a fresh state directory: {source}')
-    includes = [p for p in (cuda / 'include', cuda / 'targets/x86_64-linux/include')
-                if (p / 'cuda_runtime.h').is_file()]
-    libraries = [p for p in (cuda / 'lib64', cuda / 'lib',
-                             cuda / 'targets/x86_64-linux/lib')
-                 if (p / 'libcudart.so').exists() and (p / 'libcublas.so').exists()]
-    if not includes or not libraries:
-        raise ValueError('CUDA runtime/cuBLAS development headers and libraries are required')
+    includes, libraries = cuda_layout(cuda)
+    (state / 'cuda-library-paths.json').write_text(json.dumps(list(map(str, libraries))) + '\n')
+    print('CUDA include directories:', ', '.join(map(str, includes)), flush=True)
+    print('CUDA library directories:', ', '.join(map(str, libraries)), flush=True)
     files = subprocess.check_output(
         ['git', '-C', str(root), 'ls-files', '-co', '--exclude-standard', '-z']
     ).decode().split('\0')
@@ -40,10 +86,10 @@ def prepare(root, state, base, cuda, host):
         ['mpicxx', '--showme:incdirs'], text=True).strip())
     config = (base / 'siteconfig.py').read_text()
     config += f'''
-# V100: CUDA 12.6, native Volta code plus forward-compatible PTX.
+# V100: CUDA 12.x, native Volta code plus forward-compatible PTX.
 gpu = True
 gpu_target = 'cuda'
-gpu_compiler = {str(cuda / 'bin/nvcc')!r}
+gpu_compiler = {str(cuda_compiler(cuda))!r}
 gpu_compile_args = ['-O3', '-ccbin', {host!r},
                     '-gencode', 'arch=compute_70,code=sm_70',
                     '-gencode', 'arch=compute_70,code=compute_70']

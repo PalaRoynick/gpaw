@@ -71,3 +71,34 @@ def test_hpc_sdk_wrapper_selects_sibling_cuda(tmp_path):
         ['bash', '-c', 'source "$1"; deepdft_select_cuda',
          'test', str(TOOLS / 'select_cuda.sh')], env=environment, text=True)
     assert result.strip() == str(destination)
+
+
+def test_explicit_hpc_compiler_root_is_normalized(tmp_path):
+    root = toolkit(tmp_path, '12.9')
+    sdk = tmp_path / 'sdk/25.7'
+    destination = sdk / 'cuda/12.9'
+    destination.parent.mkdir(parents=True)
+    root.rename(destination)
+    compiler = sdk / 'compilers'
+    (compiler / 'bin').mkdir(parents=True)
+    nvcc = compiler / 'bin/nvcc'
+    nvcc.write_text('#!/bin/sh\necho "release 12.9, V12.9"\n')
+    nvcc.chmod(0o755)
+    result = subprocess.check_output(
+        ['bash', '-c', 'source "$1"; deepdft_select_cuda "$2"',
+         'test', str(TOOLS / 'select_cuda.sh'), str(compiler)], text=True)
+    assert result.strip() == str(destination)
+
+
+def test_hpc_sdk_cuda_without_bin_selects_compiler(tmp_path):
+    root = toolkit(tmp_path, '12.9')
+    sdk = tmp_path / 'sdk/25.7'
+    sdk.mkdir(parents=True)
+    root.rename(sdk / 'cuda')
+    compiler = sdk / 'compilers/bin'
+    compiler.mkdir(parents=True)
+    (sdk / 'cuda/bin/nvcc').rename(compiler / 'nvcc')
+    result = subprocess.check_output(
+        ['bash', '-c', 'source "$1"; deepdft_select_cuda "$2"',
+         'test', str(TOOLS / 'select_cuda.sh'), str(sdk / 'cuda')], text=True)
+    assert result.strip() == str(sdk / 'cuda')
