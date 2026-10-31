@@ -283,8 +283,8 @@ runs and runs skipping forces always report `gpu_validated: false`; they cannot
 certify a force backend. Synchronization is diagnostic overhead, not a timing
 benchmark. The current FD LFC derivative path enters CPU C code expecting NumPy
 arrays; that is a candidate native-crash path when passed device arrays. No
-kernel repair is claimed without real-device validation. FD CUDA ionic
-relaxation is now blocked before calling native forces; use CPU FD relaxation.
+kernel repair is claimed without real-device validation. FD CUDA ionic relaxation uses the same explicit experimental opt-in; validate
+forces on the target GPU first.
 
 The default CPU/GPU acceptance now runs each backend in a separate subprocess.
 Worker stdout/stderr are streamed and saved as `cpu-worker.log`/`cuda-worker.log`;
@@ -315,5 +315,58 @@ The opt-in flag extends the updater's fixed allowlist by exactly those two core
 Python files. Both are backed up and native-extension hashes remain checked.
 Without the flag, core files are not changed. Rerun real CPU/GPU acceptance on
 bulk, slab and finite families. A Python fix plus array emulation is not proof
-that every FD GPU operation is supported. FD GPU relaxation remains blocked
-pending successful force-backend validation on actual hardware.
+that every FD GPU operation is supported. FD GPU relaxation is available with `--experimental-fd-gpu`. The former
+unconditional block is removed; run the complete real-device force checks before
+using relaxed references for scientific training.
+
+
+## Training in the native GPAW CUDA environment
+
+A native GPAW/CuPy build does not by itself install PyTorch. Training uses CUDA
+PyTorch independently of GPAW's PW/FD execution backend. Either activate the
+existing rootless ML environment (`.deepdft-build/user-v100/activate.sh`) in a
+fresh shell, or add the adapter's training dependency to the native CUDA venv:
+
+```bash
+/path/to/gpaw-cuda-build/venv/bin/python \
+  "$PROJECT/tools/deepdft/enable_training.py" --profile v100
+```
+
+This defaults to PyTorch 2.7.1+cu126 and checks Volta support;
+`--torch-runtime cu118` selects the earlier profile. It updates only Python
+adapters, initializes the pinned DeepDFT submodule, and registers its path in the
+installed adapter package. It does not put the GPAW checkout on sys.path or
+rebuild GPAW. The checkout/submodule must remain available when training. Model
+checkpoints retain source fingerprints. Set GPAW_DEEPDFT_SOURCE explicitly to
+select a different initialized source directory; incompatible checkpoint source
+fingerprints are still rejected.
+
+The final check requires an allocated V100 and exercises forward, backward and
+Adam parameter updates. `--profile cpu` explicitly selects CPU PyTorch;
+`--no-install` checks/configures existing dependencies; `--dry-run` only prints
+the destination and intended install. Run with the desired venv's Python and
+outside active calculation jobs. Native extension hashes are checked unchanged.
+This installs the dependencies used by the density adapter, not all optional
+utilities in upstream DeepDFT's dataset module (ASAP3/LZ4 are in the full rootless
+ML profile). Native CUDA Toolkit and PyTorch's bundled CUDA runtime are
+separate components; a newer system nvcc is not a substitute for CUDA PyTorch.
+
+## References changed after splitting
+
+A split records exact cube hashes. If cube/sidecar references were intentionally
+recalculated or replaced, create a new split in a fresh directory and start a new
+training output. Do not edit stored checksums or resume an old checkpoint against
+a different dataset. If replacement was unexpected, restore the intended data
+before training. `tools/deepdft/audit_splits.py /path/to/splits.json` checks the
+split, sidecar and actual cube hashes without changing files, and lists the
+reference directories used by that split. A new split still rejects inconsistent
+physical reference protocols and preserves parent-group separation.
+
+
+If an installed adapter still reports `FD CUDA relaxation is disabled`, it
+contains the older temporary guard. Update the checkout and run
+`update_python_adapters.py --include-fd-force-fix` with the destination venv
+Python. This updates both the adapter and the two Python force fixes, preserving
+the native extension. The existing experimental flag then permits BFGS and emits
+an `experimental_fd_relaxation` progress event. No report-file authorization is
+required, but the force-validation tests must still be run and reviewed.

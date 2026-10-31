@@ -176,12 +176,6 @@ class DensityCalculator:
         execution_device, device_reason = select_reference_device(
             self.device, s.mode, comm.size, self.experimental_fd_gpu)
         self.gpu = execution_device == "cuda"
-        if self.gpu and s.mode == "fd" and relax_steps:
-            raise RuntimeError(
-                "FD CUDA relaxation is disabled pending force-backend validation; "
-                "localized-function derivatives may enter CPU-only C routines. "
-                "Use --device cpu for FD relaxation."
-            )
         if not sample_id or any(
             c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
             for c in sample_id
@@ -272,6 +266,10 @@ class DensityCalculator:
                 "scf_step", iteration=int(ctx.niter))
             atoms.calc.hooks["converged"] = lambda: report("scf_converged")
         relaxed = False
+        if self.gpu and s.mode == "fd" and relax_steps:
+            report("experimental_fd_relaxation", requested_steps=relax_steps,
+                   force_derivatives="host_staged",
+                   validation_note="Run real CPU/GPU force acceptance before scientific use")
         if relax_steps:
             relaxed = BFGS(atoms, logfile=str(output / (sample_id + "-relax.log"))).run(
                 fmax=fmax, steps=relax_steps

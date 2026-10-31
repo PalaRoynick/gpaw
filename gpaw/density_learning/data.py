@@ -123,5 +123,12 @@ def sample_indices(sample, count, rng, surface_fraction=0.5):
 def read_sample(record, cache=None):
     result = load_reference(record["cube"], cache)
     if result["metadata"]["cube_sha256"] != record["cube_sha256"]:
-        raise ValueError("Reference changed after the split was defined")
+        raise ValueError(
+            f"Reference changed after the split was defined: "
+            f"sample={record.get('sample_id', 'unknown')}, cube={record['cube']}, "
+            f"split_sha256={record['cube_sha256']}, "
+            f"current_sha256={result['metadata']['cube_sha256']}. "
+            "Audit the split; regenerate it only for intentional reference updates "
+            "and start a new training run."
+        )
     return result

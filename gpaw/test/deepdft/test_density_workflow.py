@@ -436,13 +436,41 @@ def test_ml_auto_device(monkeypatch, available):
 
 
 
-def test_fd_cuda_relaxation_stops_before_native_forces(tmp_path, monkeypatch):
+def test_experimental_fd_relaxation_uses_bfgs_with_emulated_arrays(tmp_path, monkeypatch):
+    from gpaw.gpu import cupy_is_fake
     from gpaw.density_learning import devices
     from gpaw.density_learning.reference import DensityCalculator
 
+    # Exercise device-array operations on CPU-only CI, without claiming hardware validation.
+    if cupy_is_fake:
+        import gpaw.new.builder
+        monkeypatch.setattr(gpaw.new.builder, 'GPAW_CPUPY', True)
     monkeypatch.setattr(devices, 'cuda_status', lambda: True)
-    calculator = DensityCalculator(ReferenceSettings(mode='fd'), device='cuda',
-                                   experimental_fd_gpu=True)
-    with pytest.raises(RuntimeError, match='FD CUDA relaxation is disabled'):
-        calculator.calculate(bulk('Al'), tmp_path / 'unused', 'al', 'al', relax_steps=1)
-    assert not (tmp_path / 'unused').exists()
+    settings = ReferenceSettings(grid_spacing=0.3, kpoint_density=1.0,
+                                 smearing_ev=0.1, energy_tolerance=1e-5,
+                                 density_tolerance=1e-4, eigenstate_tolerance=1e-6)
+    calculator = DensityCalculator(settings, device='cuda', experimental_fd_gpu=True)
+    atoms = Atoms('Al2', positions=[[0, 0, 0], [0, 0, 2.4]])
+    atoms.center(vacuum=4)
+    events = []
+    record = calculator.calculate(atoms, tmp_path / 'references', 'al', 'al',
+                                  relax_steps=20, fmax=0.02, progress=events.append)
+    assert record['relaxation']['requested_steps'] == 20
+    assert record['relaxation']['converged']
+    assert any(event['event'] == 'experimental_fd_relaxation' for event in events)
+    assert record['experimental_fd_gpu'] is True
+    assert not np.allclose(record['positions_angstrom'], atoms.positions)
+
+
+def test_recalculated_reference_rejects_old_split(tmp_path):
+    from gpaw.density_learning.data import read_sample
+
+    cube = make_reference(tmp_path, 'al', 'parent', value=0.2)
+    snapshot = {'cube': str(cube), **json.loads(cube.with_suffix('.json').read_text())}
+    cube.unlink()
+    cube.with_suffix('.json').unlink()
+    make_reference(tmp_path, 'al', 'parent', value=0.3)
+    with pytest.raises(ValueError, match='Reference changed after the split') as error:
+        read_sample(snapshot)
+    assert str(cube) in str(error.value)
+    assert snapshot['cube_sha256'] in str(error.value)

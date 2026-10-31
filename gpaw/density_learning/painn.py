@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 import numpy as np
+from gpaw.density_learning.dependency import source_directory
 from ase.neighborlist import neighbor_list
 from scipy.spatial import cKDTree
 
@@ -22,7 +23,7 @@ except ModuleNotFoundError as error:
 def implementation_fingerprints():
     from gpaw.density_learning.io import file_hash
 
-    directory = Path(__file__).resolve().parents[2] / "third_party/DeepDFT"
+    directory = source_directory()
     return {
         name: file_hash(directory / name) for name in ["densitymodel.py", "layer.py"]
     }
@@ -30,7 +31,10 @@ def implementation_fingerprints():
 
 def require_torch():
     if torch is None:
-        raise ImportError("Install the optional deepdft dependencies to use PaiNN")
+        raise ImportError(
+            f"The optional PyTorch dependency is missing from {sys.executable}. Activate the rootless ML "
+            "environment, or run tools/deepdft/enable_training.py with this Python."
+        )
 
 
 def optional_no_grad(function):
@@ -40,7 +44,7 @@ def optional_no_grad(function):
 @lru_cache(maxsize=1)
 def external_model():
     require_torch()
-    path = Path(__file__).resolve().parents[2] / "third_party/DeepDFT"
+    path = source_directory()
     if not (path / "densitymodel.py").is_file():
         raise RuntimeError("Initialize the pinned DeepDFT submodule")
     for name in ["layer", "densitymodel"]:
@@ -48,10 +52,13 @@ def external_model():
         if previous is not None and Path(previous.__file__).resolve().parent != path:
             raise RuntimeError(f"Conflicting imported module: {name}")
     sys.path.insert(0, str(path))
+    previous_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
     try:
         return importlib.import_module("densitymodel").PainnDensityModel
     finally:
         sys.path.pop(0)
+        sys.dont_write_bytecode = previous_bytecode
 
 
 def tensor(value, integer=False):
