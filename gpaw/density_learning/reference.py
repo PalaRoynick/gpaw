@@ -70,12 +70,18 @@ class DensityCalculator:
         max_atoms=256,
         max_density_voxels=100_000_000,
         max_wavefunction_gib=None,
-        gpu=False,
+        gpu=None,
+        device="auto",
+        experimental_fd_gpu=False,
     ):
         self.settings = settings
-        self.gpu = gpu
-        if gpu and settings.mode != "pw":
-            raise ValueError("The CUDA reference profile requires PW mode")
+        self.device = ("cuda" if gpu else "cpu") if gpu is not None else device
+        if self.device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("Reference device must be auto, cpu or cuda")
+        self.experimental_fd_gpu = experimental_fd_gpu
+        self.gpu = False
+        if self.device == "cuda" and settings.mode == "fd" and not experimental_fd_gpu:
+            raise ValueError("FD CUDA requires --experimental-fd-gpu (experimental_fd_gpu=True)")
         self.communicator = communicator
         self.max_atoms = max_atoms
         self.max_density_voxels = max_density_voxels
@@ -129,7 +135,8 @@ class DensityCalculator:
         return {
             "natoms": len(atoms),
             "mode": s.mode,
-            "execution_device": "cuda" if self.gpu else "cpu",
+            "execution_device": self.device,
+            "execution_device_requested": self.device,
             "kpoint_mesh": list(map(int, mesh)),
             "conservative_fd_grid_shape": shape.tolist(),
             "estimated_bands_per_spin": bands,
@@ -165,12 +172,10 @@ class DensityCalculator:
 
         comm = self.communicator if self.communicator is not None else world
         s = self.settings
-        if self.gpu:
-            if comm.size != 1:
-                raise ValueError("The CUDA PBE reference profile requires one MPI rank")
-            from gpaw.gpu import cupy_is_fake
-            if cupy_is_fake:
-                raise RuntimeError("Real CUDA GPAW and an allocated GPU are required")
+        from gpaw.density_learning.devices import select_reference_device
+        execution_device, device_reason = select_reference_device(
+            self.device, s.mode, comm.size, self.experimental_fd_gpu)
+        self.gpu = execution_device == "cuda"
         if not sample_id or any(
             c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
             for c in sample_id
@@ -239,6 +244,9 @@ class DensityCalculator:
             raise ValueError(
                 "Use FD for open boundaries in this initial reference wrapper"
             )
+        if self.gpu and s.mode == "fd":
+            from gpaw.density_learning.poisson import HostStagedPoisson
+            kwargs["poissonsolver"] = HostStagedPoisson(kwargs.get("poissonsolver", {}))
         started = monotonic()
 
         def report(event, **details):
@@ -247,6 +255,7 @@ class DensityCalculator:
                           "elapsed_seconds": monotonic() - started, **details})
 
         report("initialization_started", mpi_ranks=comm.size,
+               execution_device=execution_device, device_reason=device_reason,
                log_file=str(output / (sample_id + ".log")))
         atoms.calc = GPAW(**kwargs)
         if progress is not None and not getattr(atoms.calc, "old", False):
@@ -347,7 +356,11 @@ class DensityCalculator:
                         "point valence ions or normalize it to the valence count."
                     ),
                     "mpi_ranks": comm.size,
-                    "execution_device": "cuda" if self.gpu else "cpu",
+                    "execution_device": execution_device,
+                    "execution_device_requested": self.device,
+                    "device_reason": device_reason,
+                    "poisson_execution_device": "cpu" if self.gpu and s.mode == "fd" else execution_device,
+                    "experimental_fd_gpu": bool(self.gpu and s.mode == "fd"),
                     "final_magnetic_moment": final_magnetic_moment,
                     "input_geometry_sha256": input_hash,
                     "units": "electron/angstrom^3",

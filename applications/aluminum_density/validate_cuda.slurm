@@ -13,5 +13,5 @@ set -euo pipefail
 source "${GPAW_CUDA_BUILD:-$HOME/gpaw-cuda-v100}/activate.sh"
 mkdir -p "$GPAW_CUDA_STATE/work"
 cd "$GPAW_CUDA_STATE/work"
-python "$GPAW_CUDA_STATE/source/tools/deepdft/check_gpaw_cuda.py" \
-  --require-v100 --output "$PWD/validation-$SLURM_JOB_ID"
+python "${GPAW_SOURCE_ROOT:?Set GPAW_SOURCE_ROOT to the updated checkout}/tools/deepdft/check_gpaw_cuda.py" \
+  --require-v100 --output "$PWD/validation-$SLURM_JOB_ID" "$@"

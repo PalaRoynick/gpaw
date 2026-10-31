@@ -122,8 +122,10 @@ and thread oversubscription.
 
 The V100 environment enables PyTorch training, not GPU execution of FD GPAW.
 Use `train_v100.sh` for one allocated V100 per model; the workflow has no DDP.
-GPAW GPU ground-state support in this revision is PW-only and requires its own
-GPU-enabled build and compatible CuPy/MPI stack. Do not switch boundary conditions
+The established GPAW CUDA profile uses PW and requires its own GPU-enabled
+build and compatible CuPy/MPI stack. This revision also contains FD GPU kernels;
+see README.md for the experimental single-rank host-Poisson adapter and required
+real-device validation. Do not switch boundary conditions
 or enable GPAW_USE_GPUS simply to make an FD reference run on a GPU.
 
 Different Python-source and extension Git hashes do not alone prove an ABI

@@ -27,8 +27,11 @@ def main(argv=None):
     ref.add_argument("--input", required=True)
     ref.add_argument("--output", required=True)
     ref.add_argument("--settings")
-    ref.add_argument("--gpu", action="store_true",
-                     help="Use the single-rank CUDA PW reference profile")
+    ref_device = ref.add_mutually_exclusive_group()
+    ref_device.add_argument("--gpu", action="store_true", help="Require CUDA (alias for --device cuda)")
+    ref_device.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    ref.add_argument("--experimental-fd-gpu", action="store_true",
+                     help="Opt in to FD CUDA with host-staged Poisson; validate on hardware first")
     ref.add_argument("--max-atoms", type=int, default=256)
     ref.add_argument("--max-density-voxels", type=int, default=100_000_000)
     ref.add_argument(
@@ -88,6 +91,8 @@ def main(argv=None):
     convergence.add_argument("--index", type=int, default=0)
     convergence.add_argument("--settings")
     convergence.add_argument("--output", required=True)
+    convergence.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    convergence.add_argument("--experimental-fd-gpu", action="store_true")
     convergence.add_argument(
         "--parameter",
         required=True,
@@ -95,7 +100,7 @@ def main(argv=None):
     )
     convergence.add_argument("--values", required=True, type=float, nargs="+")
     for command in [training, evaluation, prediction]:
-        command.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+        command.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
         command.add_argument("--threads", type=int, default=4)
     args = parser.parse_args(argv)
     if args.command == "reference":
@@ -117,14 +122,15 @@ def main(argv=None):
                 if world.rank == 0:
                     print(json.dumps({"event": "runtime", "rank": rank,
                                       "mpi_ranks": world.size,
-                                      "requested_device": "cuda" if args.gpu else "cpu",
+                                      "requested_device": "cuda" if args.gpu else args.device,
                                       "reference_mode": settings.mode, **snapshot}), flush=True)
         calculator = DensityCalculator(
             settings,
             max_atoms=args.max_atoms,
             max_density_voxels=args.max_density_voxels,
             max_wavefunction_gib=args.max_wavefunction_gib,
-            gpu=args.gpu,
+            device="cuda" if args.gpu else args.device,
+            experimental_fd_gpu=args.experimental_fd_gpu,
         )
         structures = read(args.input, index=":")
         if args.start < 0 or (args.stop is not None and args.stop < args.start):
@@ -280,6 +286,7 @@ def main(argv=None):
             args.output,
             args.parameter,
             args.values,
+            device=args.device, experimental_fd_gpu=args.experimental_fd_gpu,
         )
 
 

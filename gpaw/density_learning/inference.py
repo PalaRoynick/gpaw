@@ -130,13 +130,13 @@ def predict(
     spacing=0.2,
     tile=24,
     probe_batch=2048,
-    device="cpu",
+    device="auto",
     threads=4,
     max_voxels=100_000_000,
     max_halo_atoms=50_000,
     plan_only=False,
 ):
-    device_check(device)
+    device = device_check(device)
     torch.set_num_threads(threads)
     model, checkpoint = load_checkpoint(checkpoint_path, device)
     if set(map(int, atoms.numbers)) - set(

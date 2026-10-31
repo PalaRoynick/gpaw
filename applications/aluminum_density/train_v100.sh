@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # One allocated V100 per training process. Preserve scheduler GPU visibility.
 set -euo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-cd "$root"
 python - <<'PY'
 import torch
 if not torch.cuda.is_available() or torch.cuda.get_device_capability() != (7, 0):

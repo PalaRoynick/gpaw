@@ -76,8 +76,10 @@ python -m gpaw.density_learning.cli reference --gpu \
   --output /your/work/pw-cuda-references
 ```
 
-The wrapper rejects FD with `--gpu`, fake GPU execution, multiple MPI ranks and
-nonperiodic PW inputs. Do not convert an isolated system or slab into a fully
+The wrapper rejects fake GPU execution, explicit multi-rank CUDA requests and
+nonperiodic PW inputs. FD CUDA is separately available with the explicit
+`--experimental-fd-gpu` opt-in, using the host-staged electrostatic adapter; see
+the aluminum application README for hardware acceptance before using it. Do not convert an isolated system or slab into a fully
 periodic system just to use this profile: that changes the physical problem.
 Do not pass the mixed pilot file directly; select periodic structures first.
 The exported pseudo density keeps the existing units and PAW convention.
@@ -122,8 +124,10 @@ some multi-rank GPU decompositions without GPU-aware MPI. Therefore this wrapper
 supports one GPU per reference job initially. Multiple independent structures can
 use separate scheduler jobs/array elements with disjoint output directories.
 
-PW is the supported profile here. The source contains experimental FD GPU tests,
-but this build does not certify FD/open-boundary GPU labels or multi-GPU PBE.
+PW is the established profile here. The application now offers an experimental
+FD CUDA adapter with CPU Poisson corrections; it must pass the new bulk/slab/finite
+acceptance checks on real hardware before labels are used. This build does not
+certify multi-GPU PBE.
 PAW datasets, wheels, toolkit, density cubes and validation logs remain outside Git.
 
 ## Conda timeouts and site CUDA modules
@@ -183,3 +187,32 @@ The toolkit root need not contain `bin/nvcc`: HPC SDK may keep the compiler in
 sibling `compilers/bin/nvcc` while headers and runtime live in `cuda`. The selected
 compiler path is used explicitly in siteconfig; CUDA_PATH refers to the header/
 runtime root. These paths are distinct from the private GCC host compiler.
+
+
+The reference, convergence and ML commands now accept `--device auto` by default;
+CPU selection is explicit in reference progress events. `--device cuda` (or the
+reference alias `--gpu`) fails instead of silently accepting CPU fallback.
+The FD adapter is opt-in because real-device acceptance has not yet been run by
+the developer in this environment. It preserves the configured FD basis,
+boundaries and electrostatic corrections; it does not convert open systems to PW.
+Run the hardware comparison separately for `--mode fd --family bulk`, `slab`,
+and `finite`. A fake-CuPy FD calculation is not an acceptance substitute.
+
+
+## Update Python adapters without rebuilding CUDA
+
+After `git pull`, run with the installed CUDA environment's Python:
+
+```bash
+/path/to/gpaw-cuda-build/venv/bin/python \
+  /path/to/gpaw/tools/deepdft/update_python_adapters.py --dry-run
+/path/to/gpaw-cuda-build/venv/bin/python \
+  /path/to/gpaw/tools/deepdft/update_python_adapters.py
+```
+
+Only `gpaw/density_learning/*.py` is updated. `_gpaw.so` and compiled kernels are
+preserved and their hashes verified; replacements are backed up inside the venv.
+Applications/settings/test scripts remain in the checkout, not in site-packages.
+Use the checkout's `tools/deepdft/check_gpaw_cuda.py` to test new adapter features,
+not an older copy under the build state's source snapshot. Use a new Python
+process after updating and perform updates between calculation jobs.

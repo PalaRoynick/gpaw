@@ -32,6 +32,10 @@ from gpaw.density_learning.painn import (
 
 def device_check(device):
     require_torch()
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device not in {"cpu", "cuda"}:
+        raise ValueError("Device must be auto, cpu or cuda")
     if device == "cuda":
         if not torch.cuda.is_available():
             raise RuntimeError(
@@ -42,6 +46,8 @@ def device_check(device):
             and "sm_70" not in torch.cuda.get_arch_list()
         ):
             raise RuntimeError("The installed PyTorch wheel does not support this V100")
+
+    return device
 
 
 def set_seed(seed, threads):
@@ -95,7 +101,7 @@ def train(
     split_path,
     output,
     *,
-    device="cpu",
+    device="auto",
     steps=10000,
     probes=1024,
     threads=4,
@@ -110,7 +116,7 @@ def train(
 ):
     if min(steps, probes, validate_every) < 1 or not 0 <= surface_fraction <= 1:
         raise ValueError("Invalid training budget or sampling fraction")
-    device_check(device)
+    device = device_check(device)
     set_seed(seed, threads)
     output = external_directory(output)
     if (output / "best.pt").exists() and resume is None:
@@ -282,13 +288,13 @@ def evaluate(
     output,
     *,
     partition="test",
-    device="cpu",
+    device="auto",
     batch_size=4096,
     threads=4,
 ):
     if batch_size < 1:
         raise ValueError("Validation batch_size must be positive")
-    device_check(device)
+    device = device_check(device)
     set_seed(0, threads)
     output = external_directory(output)
     split = load_splits(split_path)

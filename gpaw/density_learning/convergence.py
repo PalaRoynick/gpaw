@@ -53,7 +53,7 @@ def compare(reference, candidate):
     }
 
 
-def converge(atoms, settings, output, parameter, values):
+def converge(atoms, settings, output, parameter, values, device="auto", experimental_fd_gpu=False):
     from gpaw.mpi import world, broadcast
 
     if len(values) < 2:
@@ -63,7 +63,8 @@ def converge(atoms, settings, output, parameter, values):
     output = external_directory(output)
     for index, value in enumerate(values):
         current = replace(settings, **{parameter: value})
-        DensityCalculator(current).calculate(
+        DensityCalculator(current, device=device,
+                          experimental_fd_gpu=experimental_fd_gpu).calculate(
             atoms, output, f"convergence-{index:03d}", "convergence", "convergence"
         )
     error = None

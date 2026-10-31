@@ -351,10 +351,10 @@ def test_pw_plan_does_not_claim_fd_storage():
 def test_cuda_reference_rejects_fd():
     from gpaw.density_learning.reference import DensityCalculator
 
-    with pytest.raises(ValueError, match="requires PW"):
+    with pytest.raises(ValueError, match="experimental_fd_gpu"):
         DensityCalculator(ReferenceSettings(mode="fd"), gpu=True)
     plan = DensityCalculator(ReferenceSettings(mode="pw"), gpu=True).plan(bulk("Al"))
-    assert plan["execution_device"] == "cuda"
+    assert plan["execution_device_requested"] == "cuda"
 
 
 @pytest.mark.parametrize('shadowed', [False, True])
@@ -374,3 +374,62 @@ def test_cuda_environment_rejects_source_shadowing(tmp_path, monkeypatch, shadow
             runtime.validate_cuda_environment()
     else:
         runtime.validate_cuda_environment()
+
+
+@pytest.mark.parametrize('available', [False, True])
+def test_reference_auto_device_policy(monkeypatch, available):
+    from gpaw.density_learning import devices
+
+    monkeypatch.setattr(devices, 'cuda_status', lambda: available)
+    assert devices.select_reference_device('auto', 'pw', 1)[0] == ('cuda' if available else 'cpu')
+    assert devices.select_reference_device('auto', 'fd', 1)[0] == 'cpu'
+    assert devices.select_reference_device('auto', 'fd', 1, True)[0] == ('cuda' if available else 'cpu')
+    assert devices.select_reference_device('auto', 'pw', 2)[0] == 'cpu'
+    assert devices.select_reference_device('cpu', 'pw', 1)[0] == 'cpu'
+    with pytest.raises(RuntimeError, match='one MPI rank'):
+        devices.select_reference_device('cuda', 'pw', 2)
+    if not available:
+        with pytest.raises(RuntimeError, match='unavailable'):
+            devices.select_reference_device('cuda', 'pw', 1)
+
+
+@pytest.mark.parametrize('slab', [False, True])
+def test_host_staged_poisson_preserves_multipole_solution(slab):
+    from gpaw.core import UGDesc
+    from gpaw.density_learning.poisson import HostStagedPoisson
+    from gpaw.poisson import PoissonSolver
+
+    pbc = (True, True, False) if slab else (False, False, False)
+    grid = UGDesc(cell=[10, 10, 10], size=[16, 16, 16], pbc=pbc,
+                  zerobc=tuple(not p for p in pbc))
+    charge = grid.zeros()
+    xyz = grid.xyz()
+    center1, center2 = ([5, 5, 4], [5, 5, 6]) if slab else ([4, 5, 5], [6, 5, 5])
+    charge.data[:] = np.exp(-np.sum((xyz - center1)**2, axis=-1))
+    charge.data[:] -= np.exp(-np.sum((xyz - center2)**2, axis=-1))
+    params = ({'dipolelayer': 'xy'} if slab else
+              {'name': 'MomentCorrectionPoissonSolver',
+               'poissonsolver': {'name': 'fast'}, 'moment_corrections': 4})
+    direct = PoissonSolver(**params).build(grid, np)
+    staged = HostStagedPoisson(params).build(grid, np)
+    a, b = grid.zeros(), grid.zeros()
+    direct.solve(a, charge)
+    staged.solve(b, charge)
+    np.testing.assert_allclose(a.data, b.data, rtol=0, atol=1e-12)
+    # Exercise transfers using array emulation only, without CUDA kernels.
+    from gpaw.gpu import cpupy
+    gpu_potential = grid.zeros(xp=cpupy)
+    staged.solve(gpu_potential, charge.to_xp(cpupy))
+    np.testing.assert_allclose(a.data, cpupy.asnumpy(gpu_potential.data), rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize('available', [False, True])
+def test_ml_auto_device(monkeypatch, available):
+    torch = pytest.importorskip('torch')
+    from gpaw.density_learning.training import device_check
+
+    monkeypatch.setattr(torch.cuda, 'is_available', lambda: available)
+    monkeypatch.setattr(torch.cuda, 'get_device_capability', lambda: (7, 0))
+    monkeypatch.setattr(torch.cuda, 'get_arch_list', lambda: ['sm_70'])
+    assert device_check('auto') == ('cuda' if available else 'cpu')
+    assert device_check('cpu') == 'cpu'

@@ -1,330 +1,264 @@
-# Aluminum reference-density and PaiNN workflow
+# Aluminum density workflow with automatic GPU selection
 
-This source-checkout application prepares neutral aluminum density datasets,
-trains a scalar-density PaiNN adapter, and evaluates or exports density cubes.
-The reusable implementation lives in `gpaw/density_learning`; case-specific
-geometry generation, reference settings and launchers live here. All paths
-containing datasets, logs, checkpoints and predictions must be outside the
-source checkout. The workflow creates no commits, PRs or upstream notifications.
+Generate generic Al structures, calculate PAW density references, train PaiNN,
+validate held-out grids, and predict larger structures. Keep data, checkpoints,
+logs and calculations outside this checkout. Never change periodicity or basis
+just to select a GPU. See [reference validation](REFERENCE_VALIDATION.md) for
+physical assumptions, electrostatics, relaxation, spin and convergence.
 
-## Scientific conventions
+## Backend roadmap
 
-- Start from the standard scalar-relativistic frozen-core **Al PAW/PBE setup
-  with 3 valence electrons**. The application checks the actual PAW valence and
-  records the setup fingerprint, GPAW version and resolved k points.
-- The selected target is GPAW's **smooth PAW pseudo density without compensation
-  charges**, in electrons/angstrom^3 internally. The current GPAW ASE
-  `get_pseudo_density()` default adds compensation charges and can be signed;
-  this wrapper uses the public `Densities` API with that addition disabled.
-- Smooth PAW density is a representation-dependent field, including GPAW's
-  pseudo-core convention. Its integral need not equal `3 * number_of_atoms`.
-  The measured integral and augmentation difference are recorded. No silent
-  normalization to a valence or nuclear electron count is performed.
-- Cube values use **electrons/Bohr^3**. Cube headers contain nuclear atomic
-  numbers and ionic coordinates in Bohr. Thus one cube already stores both
-  the structure and the scalar field; a fictitious second ionic-density field
-  is unnecessary. A required JSON sidecar restores PBC, units and provenance.
-- `density_kind="valence"` exports reconstructed all-electron valence density;
-  `"all-electron"` additionally includes frozen core electrons. Keep these
-  targets in separate datasets. They require independent near-nucleus grid
-  convergence and are not interchangeable with pseudo density.
-  Valence-only reconstruction is not forcibly normalized by this GPAW API.
-  Refine its grid until the electron-integral check passes; factors up to 32
-  are available and guarded by `--max-density-voxels` (100 million by default).
-  Full all-electron count correction alone does not prove near-core convergence.
+| Stage | Automatic policy | Explicit CPU route |
+|---|---|---|
+| Geometry generation / dataset splitting | CPU; no expensive GPU kernels | Same command |
+| Periodic PW references / relaxation | Real CUDA when available, one rank | `--device cpu` |
+| FD references / relaxation | CPU by default; optional experimental GPU with host Poisson | `--device cpu` |
+| Fixed-geometry convergence | Same policy as the reference stage | `--device cpu` |
+| PaiNN train / evaluate / predict | PyTorch CUDA when available | `--device cpu` |
+| Cube serialization / host Poisson / KD trees | CPU, even in a GPU job | Same algorithms |
 
-## 1. Environment
+`--device auto` is the default. `--device cuda` requires a GPU and fails if it
+cannot be used. The reference alias `--gpu` means `--device cuda`. Auto explains
+why CPU was selected; it does not catch numerical failures or GPU OOM and rerun
+on another backend. Physical parameters remain unchanged. Multiple MPI ranks use
+CPU in auto mode; multi-rank GPU reference calculations remain unsupported here.
 
-Use the tested rootless build from the repository root:
+FD GPU kernels exist in this revision (see `gpaw/test/gpu/test_pw.py`), despite the
+older GPU documentation describing PW only. Our previous wrapper's unconditional
+FD rejection was too restrictive. Full GPU support for every Poisson correction
+is not established. The opt-in FD adapter keeps Hamiltonian/density operations on
+GPU and stages the charge/potential to CPU for the existing Poisson solver,
+including the same moment and slab dipole corrections. It changes execution,
+not physical boundary conditions. Transfers can reduce the achievable speedup.
+The adapter is experimental and requires the real-hardware tests below before
+using it for scientific labels. Array emulation does not certify GPU kernels.
+
+## 1. Environments and installed code
+
+Use separate rootless environments for reference generation and ML:
+
+- Native GPAW/CuPy CUDA build: [build guide](../../doc/deepdft-gpaw-cuda.md).
+- PaiNN/PyTorch V100 build: [Linux guide](../../doc/deepdft-linux.md),
+  `build_user_linux.sh --mode v100`. This installs CPU GPAW plus CUDA PyTorch.
+  The native CUDA environment alone does not install PyTorch/ASAP3.
+
+A CUDA wheel is a source snapshot. After pulling Python-only changes, update
+only the density-learning adapters using the destination environment's Python:
 
 ```bash
-bash tools/deepdft/build_user_linux.sh --mode cpu
-source .deepdft-build/user-cpu/activate.sh
+/path/to/gpaw-cuda-build/venv/bin/python \
+  /path/to/your/gpaw/tools/deepdft/update_python_adapters.py --dry-run
+/path/to/gpaw-cuda-build/venv/bin/python \
+  /path/to/your/gpaw/tools/deepdft/update_python_adapters.py
 ```
 
-For an allocated V100, use `--mode v100` and its corresponding activation file.
-See `doc/deepdft-linux.md` for the NVIDIA driver, PyTorch cu118, and environment
-isolation requirements. The density pipeline uses existing optional ML
-dependencies; importing `gpaw.density_learning` itself does not import PyTorch
-or initialize MPI.
+The updater copies only `gpaw/density_learning/*.py`, backs up replacements under
+`<venv>/.gpaw-adapter-backups/`, invalidates those modules' bytecode, and verifies
+native-extension hashes remain unchanged. It imports neither GPAW nor CUDA and
+can run from the checkout. Run it between jobs, then start a new Python process.
+It does not copy the GPAW core, settings, applications or toolchain. Application
+scripts and settings are used directly from the updated checkout. Recompile only
+when native sources or build configuration actually change. The runtime-path
+activation helper is also sourced from the checkout and updates independently.
 
-The commands below use an example workspace. Replace it with a writable
-persistent path outside Git:
+Example shell variables (use your own persistent paths):
 
 ```bash
+PROJECT=/path/to/your/gpaw
 WORK=/scratch/your-account/al-density
+CUDA_BUILD=/path/to/gpaw-cuda-build
 mkdir -p "$WORK"
+source "$CUDA_BUILD/activate.sh"
+cd "$WORK"
 ```
 
-## 2. Start with an inexpensive software smoke run
+All commands below run outside the checkout. Launchers preserve the working
+directory. Preserve scheduler CUDA_VISIBLE_DEVICES. Allocate one GPU per job;
+there is no multi-GPU DDP training or multi-GPU PBE certification in this workflow.
+For CPU-only hosts, activate the rootless CPU environment instead.
+
+## 2. Validate the selected GPAW backend
+
+Start with the PW acceptance test (the user has verified this on a V100):
 
 ```bash
-python -m applications.aluminum_density.generate \
+python "$PROJECT/tools/deepdft/check_gpaw_cuda.py" \
+  --require-v100 --output "$WORK/check-pw-001"
+```
+
+Before opting into FD GPU, run each boundary family on the actual GPU:
+
+```bash
+for family in bulk slab finite; do
+  python "$PROJECT/tools/deepdft/check_gpaw_cuda.py" \
+    --mode fd --family "$family" --require-v100 \
+    --output "$WORK/check-fd-$family-001"
+done
+```
+
+These compare CPU and GPU energy, forces and smooth density at identical settings,
+reject fake CuPy, and do not relax tolerances. `--cpu-only` checks the CPU baseline
+but does not establish GPU support. The small tests are execution checks, not a
+speed benchmark or a convergence study. No complete FD calculation in fake CuPy
+should be substituted for real-device acceptance.
+
+## 3. Smoke pipeline, retaining open boundaries
+
+```bash
+python "$PROJECT/applications/aluminum_density/generate.py" \
   --tier smoke --variants 1 --vacuum 3 --output "$WORK/smoke-geometries"
 
 python -m gpaw.density_learning.cli reference \
   --input "$WORK/smoke-geometries/structures.extxyz" \
-  --settings applications/aluminum_density/smoke.toml \
-  --output "$WORK/smoke-references"
+  --settings "$PROJECT/applications/aluminum_density/smoke.toml" \
+  --experimental-fd-gpu --device auto --output "$WORK/smoke-references"
 
 python -m gpaw.density_learning.cli split \
   --references "$WORK/smoke-references" --output "$WORK/smoke-split"
+```
 
-bash applications/aluminum_density/train_cpu.sh \
+Remove `--experimental-fd-gpu` for the CPU FD route. This mixed bank contains
+bulk, slab and finite structures. Do not switch its open structures to fully
+periodic PW. The coarse grid, small boxes and broad occupations are smoke-only.
+
+Activate the ML environment, keep the external working directory, then:
+
+```bash
+bash "$PROJECT/applications/aluminum_density/train.sh" \
   --splits "$WORK/smoke-split/splits.json" --output "$WORK/smoke-model" \
   --steps 20 --probes 64 --hidden 16 --interactions 2 --cutoff 3 --validate-every 5
 
-bash applications/aluminum_density/evaluate.sh \
+bash "$PROJECT/applications/aluminum_density/evaluate.sh" \
   --splits "$WORK/smoke-split/splits.json" \
-  --checkpoint "$WORK/smoke-model/best.pt" --output "$WORK/smoke-evaluation"
+  --checkpoint "$WORK/smoke-model/best.pt" --output "$WORK/smoke-metrics"
 ```
 
-This tiny bank contains bulk, a thin layer and a finite dimer. Its coarse grid,
-small box, broad occupations and tiny training budget test execution only.
-Neither the reference settings nor the resulting model are production physics.
-A few optimization steps and a decreasing validation loss do not establish
-scientific accuracy.
+These launchers default to auto. Set `DENSITY_DEVICE=cpu` or `cuda` to require a
+specific backend. `train_cpu.sh` and the strict `train_v100.sh` remain available.
+A 20-step smoke model is not a scientifically usable density predictor.
 
-## 3. Build a candidate reference bank
+## 4. Pilot candidates and reference labels
 
 ```bash
-python -m applications.aluminum_density.generate \
+python "$PROJECT/applications/aluminum_density/generate.py" \
   --tier pilot --variants 2 --seed 0 --vacuum 12 --output "$WORK/pilot-geometries"
 ```
 
-The current pilot has 52 candidates and 24 parent groups: bulk supercells,
-(100)/(110)/(111) slabs with multiple thicknesses, fcc-derived spheres,
-icosahedral/decahedral/faceted particles, surface pits, periodic cavities,
-small strains and displacement variants. The largest candidate has 243 atoms.
-These are **unrelaxed candidates**, not predicted equilibrium structures.
-Random displacement is not an ionic temperature or a canonical MD ensemble.
+This generates 52 unrelaxed candidates in 24 parent groups (maximum 243 atoms):
+bulk, multiple facets/thicknesses, finite motifs, strains and displacements,
+surface defects and periodic cavities. Candidate geometries are not calculated
+labels or equilibrium minima. Relax representative parents and compare competing
+isomers/spins; related variants remain in one data group.
 
-The ambient bulk lattice is fcc, but finite structures need not retain that
-motif. Compare several motifs and relax selected parents using the same DFT
-protocol. BFGS relaxes ionic positions at fixed cell; establish the bulk lattice
-constant separately with an EOS/lattice scan. The 4.05 angstrom generator value
-is a starting value, not a calculated equilibrium constant.
-The reference command supports `--relax-steps N --fmax 0.02`; an
-unconverged requested relaxation is not exported. The initial model is
-nonmagnetic as specified by `initial_moment=0`. Small isolated clusters can have
-competing spin states, including even-electron clusters. Their magnetic ground state is
-not established by this starting protocol. Different spin/XC/occupation
-protocols are rejected in one dataset unless a future model explicitly
-conditions on those state variables.
-
-Inspect the resource plan before launching DFT:
+In the native CUDA environment, after FD hardware acceptance:
 
 ```bash
 python -m gpaw.density_learning.cli reference \
   --input "$WORK/pilot-geometries/structures.extxyz" \
-  --settings applications/aluminum_density/reference.toml \
-  --output "$WORK/pilot-references" --plan-only
+  --settings "$PROJECT/applications/aluminum_density/reference.toml" \
+  --experimental-fd-gpu --output "$WORK/pilot-fd-references" --plan-only
+
+bash "$PROJECT/applications/aluminum_density/reference.sh" \
+  --input "$WORK/pilot-geometries/structures.extxyz" \
+  --experimental-fd-gpu --output "$WORK/pilot-fd-references" \
+  --start 0 --stop 2 --relax-steps 200 --fmax 0.02 --resume-completed
 ```
 
-The plan estimates FD-grid and wavefunction storage, not peak RAM. Workspaces,
-projectors, k-point/band distribution and MPI replication can increase memory.
-Allocate resources according to representative measured jobs. Standard
-Kohn-Sham labeling of very large inference geometries is not attempted by
-default: the reference atom budget is 256 and must be raised explicitly.
+The launcher defaults to one process and auto selection. For CPU/MPI explicitly
+use `GPAW_RANKS=12 ... --device cpu`. Separate jobs must use nonoverlapping input
+ranges/output files. For one-GPU Slurm jobs use `reference_gpu.slurm`, set
+GPAW_CUDA_BUILD, and pass absolute input/settings/output paths as job arguments.
+The script does not request permission or alter scheduler visibility.
 
-## 4. Establish reference convergence
+For already fully periodic structures, native PW is the established CUDA route:
+use `reference-pw-cuda.toml` with the same commands and omit the FD opt-in flag.
+Select a periodic-only input first. The wrapper refuses nonperiodic PW inputs.
+FD/PW protocols are kept in separate datasets until convergence is established.
 
-`reference.toml` proposes the following **starting** configuration:
+## 5. Reference convergence and physical targets
 
-| Setting | Starting value and required checks |
-|---|---|
-| XC / PAW | PBE / standard 3-valence-electron Al; fingerprint recorded |
-| Basis | Real-space FD, h=0.16 angstrom; test 0.18/0.16/0.14/0.12 |
-| Alternative basis | PW 500 eV for fully periodic cross-checks; test 400/500/600 |
-| Reciprocal sampling | ASE k-point density 4 on periodic axes; test 3/4/5/6 |
-| Isolated objects | Gamma only, open FD boundaries |
-| Occupations | Fermi-Dirac 0.01 eV; test 0.02/0.01/0.005/0.002 consistently |
-| Empty bands | 130% of occupied count; verify band/occupation convergence |
-| Mixing | Pulay beta=0.05, history 5, weight 50 |
-| SCF criteria | Energy 1e-6, density 1e-5, eigenstates 1e-8 in GPAW conventions |
-| Finite boundaries | Initial monopole/dipole correction; test higher moments and box size |
-| Slabs | xy periodic, z vacuum, dipole correction; converge slab thickness/vacuum |
-| Vacuum | Initial 12 angstrom per exposed side; compare 16/20 and larger where needed |
-| Ionic relaxation | Start fmax=0.02 eV/angstrom, verify a tighter criterion |
-
-GPAW interprets Fermi-Dirac width as k_B*T. A numerical occupation width is not
-zero temperature; it must be distinguished from a chosen physical electronic
-temperature. Do not merge different widths into an unconditioned density target.
-The same caveat applies to charge and spin. PBEsol/LDA can be separate
-sensitivity studies for lattice/surface properties; they are not silently mixed
-with PBE labels. LCAO is useful for screening, not the default reference-density
-basis. Ionic minimization with another potential also needs DFT rechecking.
-
-Converge energy **and density**. Example fixed-geometry sweep, with the last
-value serving as the comparison reference:
+Start with PBE / Al PAW with three valence electrons and recorded setup hashes.
+FD h=0.16 angstrom, PW cutoff 500 eV, k-point density 4, Fermi width 0.01 eV and
+130% bands are initial values, not certified convergence. Check grid/cutoff,
+k sampling, width, empty bands, vacuum and slab thickness. Energy convergence
+alone does not establish density or exterior-field convergence.
 
 ```bash
 python -m gpaw.density_learning.cli converge \
   --input "$WORK/pilot-geometries/structures.extxyz" --index 0 \
-  --settings applications/aluminum_density/reference.toml \
+  --settings "$PROJECT/applications/aluminum_density/reference.toml" \
+  --experimental-fd-gpu --device auto \
   --parameter grid_spacing --values 0.18 0.16 0.14 \
-  --output "$WORK/convergence-grid"
+  --output "$WORK/convergence-fd"
 ```
 
-The tool compares grids using explicit unit conventions and interpolation with
-axis-specific periodic/open boundary padding. It reports energy/atom, density
-MAE/RMSE, integrated relative L1 and electron-integral changes; it never accepts
-convergence automatically. Repeat on bulk, a surface and a finite structure.
-The comparison itself has interpolation error. Vacuum changes require a common
-physical region of interest rather than comparing fractional-cell profiles.
+Convergence uses the same backend selection and preserves the chosen basis.
+Its reports compare energy/atom, density MAE/RMSE, relative L1 and integrals,
+including interpolation error; acceptance remains a scientific decision.
+Relaxation is fixed-cell BFGS; an unconverged requested relaxation is not exported.
+Moments 4 correct monopole and dipole, not all angular orders through l=4.
 
-Production calculation, on a shared filesystem:
+The target remains spin-summed smooth PAW pseudo density without compensation
+charges. Internal units are electrons/angstrom^3; cubes use electrons/Bohr^3 and
+contain ionic coordinates. Sidecars retain PBC, settings, execution and provenance.
+Its integral need not be 3N. Do not renormalize it or combine it with point +3 ions
+as an electrostatic source. Reconstructed valence/all-electron densities require
+independent near-core convergence. Refer to REFERENCE_VALIDATION.md for details.
 
-```bash
-GPAW_RANKS=4 bash applications/aluminum_density/reference.sh \
-  --input "$WORK/pilot-geometries/structures.extxyz" \
-  --output "$WORK/pilot-references" --start 0 --stop 4
-```
+## 6. Full training and held-out evaluation
 
-Use nonoverlapping `--start`/`--stop` ranges for separate jobs. Every MPI rank in
-one job evaluates the same references; only rank zero writes cubes/sidecars.
-`--resume-completed` checks settings, input geometry, cube checksum and requested
-relaxation before reusing a result. Outputs are not overwritten. Review and
-expand the calculation range after initial jobs succeed.
-
-## 5. Split and train PaiNN
+In the ML environment:
 
 ```bash
 python -m gpaw.density_learning.cli split \
-  --references "$WORK/pilot-references" --output "$WORK/pilot-split" --seed 0
-
-bash applications/aluminum_density/train_v100.sh \
+  --references "$WORK/pilot-fd-references" --output "$WORK/pilot-split"
+bash "$PROJECT/applications/aluminum_density/train.sh" \
   --splits "$WORK/pilot-split/splits.json" --output "$WORK/painn-seed0" \
-  --steps 20000 --probes 1024 --cutoff 5 --interactions 3 --hidden 64 \
-  --learning-rate 0.001 --validate-every 100 --seed 0
-```
-
-Use one allocated V100 per process. Preserve scheduler `CUDA_VISIBLE_DEVICES`;
-this launcher checks Volta capability and `sm_70` and uses the first visible
-GPU. It does not implement six-GPU DDP. Multiple allocated GPUs can run
-independent seeds/folds in separate output directories under the site's
-scheduler. GPU runtime/training must be checked on the target server.
-
-CPU fallback:
-
-```bash
-DENSITY_THREADS=16 bash applications/aluminum_density/train_cpu.sh \
-  --splits "$WORK/pilot-split/splits.json" --output "$WORK/painn-cpu" \
   --steps 20000 --probes 1024 --cutoff 5 --interactions 3 --hidden 64
-```
-
-Training uses one structure per microbatch, disk-cached reference arrays, cached
-atom graphs, and atom-to-probe KD-tree queries. It never creates probe-probe
-edges. Half the default training probes are sampled near geometrically
-undercoordinated atoms and half uniformly; this is a deliberately biased
-training objective, not an unbiased full-grid MSE estimator. Validation probes
-are fixed and uniform. `--surface-fraction 0` gives uniform training.
-
-Variants of one parent share a split. Equivalent periodic fcc supercells also
-share one parent group. Families with enough independent groups are stratified;
-not every small family can appear in every partition. Inspect `splits.json` and
-add explicit withheld-size/topology experiments rather than relying only on a
-random split. Rotated copies are not independent samples. PaiNN supplies
-rotation-equivariant features; a scalar density is tested by jointly rotating
-atoms, cell and probes without voxel interpolation.
-
-The adapter adds softplus positivity and a smooth cosine gate vanishing at the
-atom-probe cutoff. This removes a nonzero vacuum background but truncates tails;
-validate omitted-tail errors. No electron-count renormalization is applied.
-Training checks finite losses/gradients, clips gradient norm at 10, and saves
-atomic `last.pt`/`best.pt` checkpoints. To resume, specify `--resume .../last.pt`
-and a larger total step count with the same dataset, seed and sampling settings.
-
-## 6. Held-out validation
-
-```bash
-DENSITY_DEVICE=cuda bash applications/aluminum_density/evaluate.sh \
+bash "$PROJECT/applications/aluminum_density/evaluate.sh" \
   --splits "$WORK/pilot-split/splits.json" --checkpoint "$WORK/painn-seed0/best.pt" \
   --output "$WORK/test-metrics" --partition test
 ```
 
-Evaluation visits the **entire held-out grid** in bounded probe batches. Reports
-include MAE, RMSE, integrated relative L1, predicted/reference grid integrals,
-near-atom, low-density, far-region and undercoordination-region errors, planar
-profiles, and radial profiles with explicit centers and sample counts. The
-radial center is the center of mass for a finite object and cell center for a
-periodic one; it is a geometric diagnostic, not an automatically inferred
-physical interface. A single aggregate metric can hide structured errors.
+Grouping prevents parent/equivalent-supercell leakage. Add withheld-size and shape
+experiments beyond random splits. Evaluation visits the full grid in bounded
+batches and reports regional/planar/radial errors and electron integrals. Training
+uses deliberately biased surface sampling; use `--surface-fraction 0` for uniform
+sampling. Checkpoints record the resolved device. CUDA OOM is an error, not an
+implicit CPU restart. Auto selection is convenient, not a promise of speedup.
 
-Use validation for model selection and test only for reporting. Six smoke
-training steps on a few small structures do not create a predictive production
-model. In particular, successful execution does not establish size extrapolation.
-
-## 7. Large-structure preparation and tiled inference
-
-Generate an inference geometry without DFT:
+## 7. Large-system prediction
 
 ```bash
-python -m applications.aluminum_density.generate \
+python "$PROJECT/applications/aluminum_density/generate.py" \
   --shape sphere --radius 12 --vacuum 12 --output "$WORK/inference-geometry"
-# Alternative: --shape cavity --radius 12 --ligament 12
-```
-
-Radius, vacuum and ligament are in angstrom. The generator accepts much larger
-radii; no 500-atom limit is imposed. First inspect the plan:
-
-```bash
-bash applications/aluminum_density/predict.sh \
+bash "$PROJECT/applications/aluminum_density/predict.sh" \
   --input "$WORK/inference-geometry/structure.extxyz" \
   --checkpoint "$WORK/painn-seed0/best.pt" --output "$WORK/prediction" \
-  --spacing 0.2 --tile 24 --plan-only
+  --spacing 0.2 --tile 24 --probe-batch 2048 --plan-only
 ```
 
-A periodic cavity represents an array of cavities. Converge the ligament and
-cell dimensions before interpreting it as an approximately isolated defect.
-The same issue applies to periodically repeated pits in a slab.
+After reviewing disk/voxel/halo budgets, remove `--plan-only`. Length parameters
+are angstrom. Prediction uses CUDA automatically when available. Tiling bounds
+working memory but does not reduce output size. The default grid budget is 100M
+voxels; raise it only after planning. A 30 nm box at 0.2 angstrom is 1500^3 points,
+not 150^3. Periodic tiled inference currently needs orthorhombic cells.
 
-After reviewing disk/grid/halo budgets:
+PaiNN's halo is (K+1)*cutoff for K interactions. Tests establish parity with the
+complete local model, not physical accuracy at a new size. Local PaiNN cannot
+guarantee nonlocal metallic polarization or global electrostatic response.
+An ML density is not a self-consistent DFT solution or an energy/force potential.
 
-```bash
-DENSITY_DEVICE=cuda bash applications/aluminum_density/predict.sh \
-  --input "$WORK/inference-geometry/structure.extxyz" \
-  --checkpoint "$WORK/painn-seed0/best.pt" --output "$WORK/prediction" \
-  --spacing 0.2 --tile 24 --probe-batch 2048
-```
-
-The default voxel budget is 100 million. Raise `--max-voxels` explicitly only
-after checking the plan and disk space. ASCII cubes are much larger than binary
-float grids. The predictor uses a global atom KD-tree, local halo graphs,
-per-tile cached atomic representations and a temporary disk-backed output array,
-then streams the cube in standard order. Probe batching limits GPU activation
-memory; tiling limits atom-graph memory. `--max-halo-atoms` bounds each local
-halo. Periodic tiled inference currently requires orthorhombic cells; open
-finite cells can be more general.
-
-For K atomic interaction layers and cutoff R, the halo radius is (K+1)*R.
-Small-system tests compare tiled predictions against the complete local model,
-including periodic images. This is exact locality bookkeeping within numerical
-precision, **not evidence of accurate physical extrapolation**. Structures
-identical within that range have identical local predictions even if their
-global properties differ. Nonlocal or state-dependent targets require an
-appropriate model extension and new reference validation.
-
-## Tests and scope
+## Verification
 
 ```bash
-python -m pytest -q gpaw/test/deepdft/test_density_workflow.py
+python -m pytest gpaw/test/deepdft -q
 mpiexec -n 2 gpaw python -m pytest -q \
   gpaw/test/deepdft/test_density_workflow.py::test_aluminum_reference_export
 ```
 
-Tests cover cube units/coordinates/PBC, incomplete-output protection,
-parent-group splitting, SO(3)/translation covariance, halo/full-model parity,
-positive vacuum behavior, training/resume, full-grid metrics and real GPAW Al
-export on one/two ranks. GPU execution, production DFT convergence, production
-model accuracy and a full large high-resolution cube are separate validation
-steps. All generated artifacts stay outside the checkout.
-
-Generic methodological references: the GPAW source documentation under
-`doc/documentation/basic.rst` and `doc/documentation/poisson.rst`; the PAW
-formalism (Blochl, Phys. Rev. B 50, 17953, 1994); PBE (Perdew, Burke and
-Ernzerhof, Phys. Rev. Lett. 77, 3865, 1996); the pinned DeepDFT implementation;
-and PaiNN (Schutt, Unke and Gastegger, ICML 2021, arXiv:2102.03150).
-
-See [reference validation](REFERENCE_VALIDATION.md) before generating scientific labels,
-including PAW electrostatics, boundary conditions, spin, relaxation and MPI execution.
+Tests cover units, symmetry, leakage, halo parity, training/resume, CPU FD export,
+backend selection and staged Poisson equivalence. Real FD CUDA hardware acceptance
+remains separate. A complete fake-CuPy FD trial on this executor crashed and is
+not counted as a passing test. No GPU results are fabricated or inferred from
+CPU/array-emulation success. No datasets, weights, PAW files or builds enter Git.
