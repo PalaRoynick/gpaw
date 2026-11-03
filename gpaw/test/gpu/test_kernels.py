@@ -141,7 +141,9 @@ def test_pw_amend_insert_realwf(dtype):
 @pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize("dtype", [np.float32, np.float64,
                                    np.complex64, np.complex128])
-def test_calculate_residuals(dtype):
+@pytest.mark.parametrize('shape', [(10, 100), (2, 16 * 65535),
+                                  (2, 16 * 65535 + 1), (2, 128, 128, 128)])
+def test_calculate_residuals(dtype, shape):
     if GPAW_NO_C_EXTENSION:
         pytest.skip('GPAW_NO_C_EXTENSION')
     from _gpaw import calculate_residuals_gpu as kernel_call
@@ -150,16 +152,15 @@ def test_calculate_residuals(dtype):
     assert cupy_call is not kernel_call
 
     rng = cp.random.RandomState(seed)
-    nN = 10
-    GN = 100
+    nN = shape[0]
 
     rdtype = as_real_dtype(dtype)
-    wfs_nG = rng.randn(nN, GN, dtype=rdtype)
+    wfs_nG = rng.randn(*shape, dtype=rdtype)
     if np.issubdtype(dtype, np.complexfloating):
-        wfs_nG = wfs_nG + 1j * rng.randn(nN, GN, dtype=rdtype)
+        wfs_nG = wfs_nG + 1j * rng.randn(*shape, dtype=rdtype)
     eps_n = rng.randn(nN, dtype=rdtype)
-    residual_kernel_nG = cp.zeros((nN, GN), dtype=dtype)
-    residual_cupy_nG = cp.zeros((nN, GN), dtype=dtype)
+    residual_kernel_nG = cp.ones(shape, dtype=dtype)
+    residual_cupy_nG = cp.ones(shape, dtype=dtype)
 
     kernel_call(residual_kernel_nG, eps_n, wfs_nG, 0)
     cupy_call(residual_cupy_nG, eps_n, wfs_nG)

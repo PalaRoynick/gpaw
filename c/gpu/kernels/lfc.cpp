@@ -106,6 +106,9 @@ void lfc_dealloc_gpu(LFCObject *self)
         gpuFree(self->volume_WMi_gpu);
         gpuFree(self->WMi_gpu);
         gpuFree(self->ni_gpu);
+        if (self->bloch_boundary_conditions) {
+            gpuFree(self->phase_i_gpu);
+        }
         gpuCheckLastError();
     }
 }
@@ -434,6 +437,7 @@ PyObject * NewLFCObject_gpu(LFCObject *self, PyObject *args)
     free(G_B2_gpu);
     if (self->bloch_boundary_conditions) {
         free(phase_i_gpu);
+        free(phase_i);
     }
     if (PyErr_Occurred())
         return NULL;

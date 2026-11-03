@@ -264,6 +264,79 @@ not counted as a passing test. No GPU results are fabricated or inferred from
 CPU/array-emulation success. No datasets, weights, PAW files or builds enter Git.
 
 
+## GPU memory during FD relaxation
+
+An out-of-memory error at `c/gpu/kernels/lfc.cpp` while moving atoms can have
+two distinct causes: the calculation's working set can exceed device capacity,
+or repeated localized-function rebuilds can retain memory. The native LFC
+destructor previously omitted the device Bloch phase table `phase_i_gpu`;
+its constructor also omitted freeing the temporary host array `phase_i`.
+Both allocations are now released. This fixes an ownership defect, not a
+guarantee that a given structure fits on a V100.
+
+This change requires rebuilding the CUDA-enabled native extension. The
+Python-only adapter updater cannot apply it. Do not replace the extension
+inside an environment that is still running calculations; use a separate
+build environment or wait for those jobs to finish. After rebuilding, install
+pytest in the new environment if needed and run the regressions on an allocated
+GPU with one MPI rank. Import mode keeps pytest from prepending the source
+checkout and shadowing the installed CUDA build:
+
+```bash
+cd "$WORK"
+python -m pytest --import-mode=importlib -q \
+  "$PROJECT/gpaw/test/gpu/test_acf.py" \
+  "$PROJECT/gpaw/test/gpu/test_kernels.py" \
+  -k 'native_lfc_bloch_buffers_are_released or calculate_residuals'
+```
+
+The regression compares native CPU/GPU addition and integration and checks
+device memory after repeated native LFC creation/deletion. It skips without
+a real GPU-enabled extension and does not certify a complete relaxation.
+
+`--plan-only` reports conservative wavefunction storage, not total or peak
+VRAM usage. Projectors, phase tables, solver workspaces, temporary arrays and
+allocator caches also consume memory. Slurm `--mem` requests host RAM;
+requesting two GPUs does not pool their VRAM in the current single-rank
+reference workflow. Independent array tasks release their process resources
+on exit, but a failed task must be rerun separately. `--resume-completed`
+skips verified final references; it does not resume an interrupted BFGS
+trajectory from its last step.
+
+## Large FD grids and CUDA residual launches
+
+The native residual kernel previously launched `ceil(Ngrid / 16)` CUDA blocks
+along the Y axis. CUDA limits that axis to 65535 blocks, so more than 1048560
+grid points produced `invalid configuration argument`. Vacuum-containing
+nanoparticle grids readily exceed this limit: `176**3` is 5451776 points.
+This launch error is distinct from insufficient VRAM or the periodic LFC leak.
+
+The kernel now caps the Y dimension and uses a grid-stride loop to cover all
+points. This native fix requires rebuilding the CUDA extension. The GPU tests
+include the old launch boundary, the first point above it and a 3D FD grid,
+for both real/complex and single/double precision arrays.
+
+For an existing installed CUDA wheel, a process-local workaround runs the same
+residual operation through CuPy for grids above the old limit. It retains GPU
+execution and the physical settings without modifying site-packages:
+
+```bash
+cd "$WORK"
+python "$PROJECT/tools/deepdft/run_reference_safe_residuals.py" \
+  --input "$WORK/pilot-geometries/structures.extxyz" \
+  --settings "$PROJECT/applications/aluminum_density/reference.toml" \
+  --device cuda --experimental-fd-gpu \
+  --output "$WORK/pilot-fd-references" \
+  --start 24 --stop 25 --relax-steps 200 --fmax 0.02 --resume-completed
+```
+
+This example retries only the first nanoparticle in the default pilot bank.
+Use the corresponding task indices for other failed structures. The workaround
+does not change grid spacing, boundary conditions, convergence tolerances or
+the density target. It does not fix the native LFC leak or remove VRAM limits;
+the CuPy expression uses a temporary array for one band at a time. Real-GPU
+validation remains necessary; passing host tests or compilation is insufficient.
+
 ## Localizing an FD CUDA native crash
 
 A force table is not sufficient to locate a segfault: the original test runs CPU

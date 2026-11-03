@@ -41,11 +41,15 @@ __global__ void calculate_residual_kernel(Tindex nG, Tindex nn,
 										  Treal* eps_n,
 										  Tcomplex* wf_nG)
 {
-    Tindex n = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
-    Tindex g = (Tindex) threadIdx.y + (Tindex) blockIdx.y * (Tindex) blockDim.y;
-    if ((g < nG) && (n < nn))
-    {
-		residual_nG[n*nG + g] = residual_nG[n*nG + g] - wf_nG[n*nG + g] * eps_n[n];
+    int64_t n = (int64_t) threadIdx.x + (int64_t) blockIdx.x * blockDim.x;
+    int64_t g = (int64_t) threadIdx.y + (int64_t) blockIdx.y * blockDim.y;
+    if (n < nn) {
+        // CUDA limits gridDim.y to 65535. Cover larger FD grids by striding.
+        const int64_t stride = (int64_t) blockDim.y * gridDim.y;
+        for (; g < nG; g += stride) {
+            residual_nG[n*nG + g] = (residual_nG[n*nG + g]
+                                    - wf_nG[n*nG + g] * eps_n[n]);
+        }
     }
 }
 
@@ -104,7 +108,8 @@ void calculate_residual_launch_kernel(
         return;
     }
 
-	const dim3 blocks((nn+15)/16, (nG+15)/16);
+    const int grid_y = 1 + (nG - 1) / 16;
+	const dim3 blocks((nn+15)/16, grid_y > 65535 ? 65535 : grid_y);
 	const dim3 threads(16, 16);
 	const int shmem = 0;
 
