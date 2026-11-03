@@ -159,13 +159,68 @@ def test_calculate_residuals(dtype, shape):
     if np.issubdtype(dtype, np.complexfloating):
         wfs_nG = wfs_nG + 1j * rng.randn(*shape, dtype=rdtype)
     eps_n = rng.randn(nN, dtype=rdtype)
-    residual_kernel_nG = cp.ones(shape, dtype=dtype)
-    residual_cupy_nG = cp.ones(shape, dtype=dtype)
+    # Preserve the random zero-residual reference: native FMA and separate
+    # CuPy multiply/subtract round identically when the initial residual is 0.
+    residual_kernel_nG = cp.zeros(shape, dtype=dtype)
+    residual_cupy_nG = cp.zeros(shape, dtype=dtype)
 
     kernel_call(residual_kernel_nG, eps_n, wfs_nG, 0)
     cupy_call(residual_cupy_nG, eps_n, wfs_nG)
 
     assert residual_kernel_nG.get() == pytest.approx(residual_cupy_nG.get())
+
+
+def exact_residual_data(dtype, shape):
+    """Dyadic inputs with an exact result, including near-zero cancellation."""
+    index = np.arange(np.prod(shape), dtype=np.int32).reshape(shape)
+    bands = np.arange(1, shape[0] + 1).reshape(
+        (-1,) + (1,) * (len(shape) - 1))
+    wavefunctions = ((index % 17 - 8) / 16).astype(dtype)
+    residual = ((index % 13 - 6) / 8).astype(dtype)
+    expected = ((16 * (index % 13 - 6)
+                 - (index % 17 - 8) * bands) / 128).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+        wavefunctions.imag = (index % 11 - 5) / 32
+        residual.imag = (index % 7 - 3) / 16
+        expected.imag = (16 * (index % 7 - 3)
+                         - (index % 11 - 5) * bands) / 256
+    eigenvalues = np.arange(1, shape[0] + 1, dtype=as_real_dtype(dtype)) / 8
+    return residual, eigenvalues, wavefunctions, expected
+
+
+@pytest.mark.parametrize('dtype', [np.float32, np.float64,
+                                  np.complex64, np.complex128])
+@pytest.mark.parametrize('shape', [(10, 100), (2, 17, 13, 11)])
+def test_calculate_residuals_exact_reference(dtype, shape):
+    """Check the independent integer-based reference without a GPU."""
+    from gpaw.purepython import calculate_residuals_gpu
+
+    residual, eigenvalues, wavefunctions, expected = exact_residual_data(
+        dtype, shape)
+    assert np.count_nonzero(residual)
+    calculate_residuals_gpu(residual, eigenvalues, wavefunctions)
+    np.testing.assert_array_equal(residual, expected)
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(cupy_is_fake, reason='No cupy')
+@pytest.mark.parametrize('dtype', [np.float32, np.float64,
+                                  np.complex64, np.complex128])
+@pytest.mark.parametrize('shape', [(10, 100), (2, 16 * 65535),
+                                  (2, 16 * 65535 + 1), (2, 128, 128, 128)])
+def test_calculate_residuals_nonzero(dtype, shape):
+    if GPAW_NO_C_EXTENSION:
+        pytest.skip('GPAW_NO_C_EXTENSION')
+    from _gpaw import calculate_residuals_gpu
+
+    residual, eigenvalues, wavefunctions, expected = exact_residual_data(
+        dtype, shape)
+    residual_gpu = cp.asarray(residual)
+    # All intermediates are exactly representable in the selected dtype, so
+    # FMA contraction cannot change this strict nonzero in-place check.
+    calculate_residuals_gpu(residual_gpu, cp.asarray(eigenvalues),
+                            cp.asarray(wavefunctions), 0)
+    np.testing.assert_array_equal(residual_gpu.get(), expected)
 
 
 @pytest.mark.gpu

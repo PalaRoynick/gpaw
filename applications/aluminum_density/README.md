@@ -316,6 +316,13 @@ points. This native fix requires rebuilding the CUDA extension. The GPU tests
 include the old launch boundary, the first point above it and a 3D FD grid,
 for both real/complex and single/double precision arrays.
 
+Residual regressions retain the random zero-initialized comparison and test
+nonzero in-place updates against an exact integer-based reference using dyadic
+inputs. This avoids confusing native fused multiply-add rounding with CuPy's
+separate multiply/subtract rounding near cancellation, especially in float32.
+The random comparison tolerances are unchanged; the dyadic cases require exact
+equality, including points beyond the former launch boundary.
+
 For an existing installed CUDA wheel, a process-local workaround runs the same
 residual operation through CuPy for grids above the old limit. It retains GPU
 execution and the physical settings without modifying site-packages:
