@@ -77,3 +77,32 @@ Code
 
 .. autoclass:: gpaw.elph.ElectronPhononMatrix
     :members:
+
+
+Full PAW finite-displacement couplings
+-------------------------------------
+
+The PAW operator uses the four contributions of Chaput, Togo and Tanaka,
+Phys. Rev. B **100**, 174304 (2019), Eqs. (75)--(81): local potential V,
+onlocal coefficient derivative D, projector derivative P including overlap
+corrections, and the transformation derivative R. Absolute eigenvalues in
+Hartree enter the overlap terms; Fermi-level shifted energies cannot replace
+them. The reference mass is 1 amu because ASE modes are mass weighted.
+
+New projection caches have version 2 and contain separate V, D, P, Q and R
+kernels. Regenerate older projection caches for full PAW matrix elements.
+The finite-displacement supercell, physical grid and atomic geometry must
+match the projection calculator. The explicit ``paw_corrections=False`` option
+reads the pseudo-Hamiltonian derivative for legacy diagnostics.
+
+``ElectronPhononMatrix.bloch_matrix(..., return_components=True)`` returns
+complex V, D, P, R and total arrays. Sum the components coherently before taking
+absolute values or applying the degeneracy average of Eq. (97). The pair API
+``bloch_matrix_pair`` supports a fixed initial point and arbitrary final path.
+With ``prefactor=False`` the mass-weighted output is in
+eV/Angstrom/sqrt(amu), so an additional atomic mass factor is incorrect.
+
+See ``tools/elph_al/README.md`` for CPU/NVIDIA builds, the Al reproduction
+protocol, an independent direct-PW calculation, and a rigid-translation check.
+The small smoke calculation validates execution and operator conventions;
+it does not establish convergence or quantitative agreement with Figure 2.

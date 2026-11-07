@@ -1,0 +1,14 @@
+{
+  "doi": "10.1103/PhysRevB.100.174304",
+  "figure": 2,
+  "pdf_page": 10,
+  "source_sha256": "bf594fc3054269d1212ee3723a9451d455648a02e90e060d411dd5bc6e5f8c28",
+  "method": "PDF vector polyline extraction, line center; not author raw data",
+  "axis_coordinates_pt": [
+    65.357,
+    278.802,
+    234.481,
+    65.791
+  ],
+  "nominal_half_linewidth_eV": 0.0011
+}

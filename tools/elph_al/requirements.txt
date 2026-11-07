@@ -1,0 +1,4 @@
+matplotlib>=3.6
+pytest>=7
+pybind11>=3.0.1
+ase @ git+https://gitlab.com/ase/ase.git@a8742a70481542f3c7030c3549d980c3330b095a

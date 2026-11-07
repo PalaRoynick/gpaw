@@ -28,34 +28,15 @@ gradients of the effective potential expressed on a real-space grid. The el-ph
 couplings are obtained from LCAO representations of the atomic gradients of the
 effective potential and the electronic states.
 
-In PAW the matrix elements of the derivative of the effective potential is
-given by the sum of the following contributions::
+Full PAW couplings use the V, D, P and R decomposition of Chaput,
+Togo and Tanaka, Phys. Rev. B 100, 174304 (2019), Eqs. (75)-(79).
+The local potential and on-site Hamiltonian derivatives are obtained by
+central differences. Projector derivatives are analytic. The P term includes
+energy-dependent overlap corrections; R uses the nuclear derivative of the
+partial-wave overlap. See tools/elph_al/README.md for conventions and tests.
 
-                  d                  d
-            < i | -- V | j > = < i | -- V | j>
-                  du  eff            du
-
-                               _
-                              \        ~a     d   .       ~a
-                            +  ) < i | p  >   -- /_\H   < p | j >
-                              /_        i     du     ij    j
-                              a,ij
-
-                               _
-                              \        d  ~a     .        ~a
-                            +  ) < i | -- p  >  /_\H    < p | j >
-                              /_       du  i        ij     j
-                              a,ij
-
-                               _
-                              \        ~a     .        d  ~a
-                            +  ) < i | p  >  /_\H    < -- p  | j >
-                              /_        i        ij    du  j
-                              a,ij
-
-where the first term is the derivative of the potential (Hartree + XC) and the
-last three terms originate from the PAW (pseudopotential) part of the effective
-DFT Hamiltonian.
+The projection cache contains energy-independent kernels, not final
+all-electron couplings. ElectronPhononMatrix combines them with band energies.
 
 """
 from .displacements import DisplacementRunner

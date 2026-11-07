@@ -6,16 +6,18 @@ from ase.parallel import parprint
 from ase.units import Bohr
 from ase.utils.filecache import MultiFileJSONCache
 
-from gpaw.dft import GPAW
 from gpaw.lcao.tightbinding import TightBinding
+from gpaw.dft import GPAW
 from gpaw.new.ase_interface import ASECalculator
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
+from gpaw.utilities.tools import tri2full
 
 from .filter import fourier_filter
 
-sc_version = 1
+sc_version = 2
 # v1: saves natom, supercell, g_sNNMM.shape and dtype
+# v2: separate V, D, P, Q and R kernels; centered projector derivatives.
 
 
 class VersionError(Exception):
@@ -93,8 +95,7 @@ class Supercell:
         return calc
 
     def _calculate_supercell_entry(self, a, v, V1t_sG, dH1_asp, wfs,
-                                   dH_asp, timer) -> ArrayND:
-
+                                   dH_asp, *, components=False):
         kpt_u = wfs.kpt_u
         setups = wfs.setups
         nao = setups.nao
@@ -103,34 +104,37 @@ class Supercell:
         nspins = wfs.nspins
 
         # Array for different k-point components
-        g_sqMM = np.zeros((nspins, len(kpt_u) // nspins, nao, nao), dtype)
+        shape = (nspins, len(kpt_u) // nspins, nao, nao)
+        kernels = {key: np.zeros(shape, dtype) for key in ('V', 'D', 'P',
+                                                           'Q', 'R')}
+        # Same ordering and center as ASE Displacement.define_offset().
+        offset = np.ravel_multi_index(np.asarray(self.supercell) // 2,
+                                      self.supercell)
+        displaced = offset * len(self.atoms) + a
 
-        # timer.start('Potential matrix')
-        V1t_sxMM = np.array([bfs.calculate_potential_matrices(v1t_G)
-                             for v1t_G in V1t_sG])
+        # 1) Integrate grid/basis products once, then form each Bloch matrix.
+        # Use the cell blocks with the physical Bloch phase convention.
+        # The direct legacy potential-matrix API has the opposite transpose.
+        V_sxMM = [bfs.calculate_potential_matrices(V) for V in V1t_sG]
         for kpt in kpt_u:
-            V_xMM = V1t_sxMM[kpt.s]
-            # same-cell (lower triangle)
+            V_xMM = V_sxMM[kpt.s]
             geff_MM = np.array(V_xMM[0], dtype=dtype)
-            if np.issubdtype(dtype, np.complexfloating):
-                kpt_c = wfs.kd.ibzk_kc[kpt.k]  # k-point coordinates
-                phase_x = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ kpt_c)
-                geff_MM += np.einsum('x,xMN->MN', phase_x, V_xMM[1:],
-                                     optimize=True)
-                geff_MM += np.einsum('x,xMN->NM', phase_x.conj(), V_xMM[1:],
-                                     optimize=True)
+            if bfs.gamma and dtype == float:
+                tri2full(geff_MM, 'L')
+            else:
+                k_c = bfs.ibzk_qc[kpt.q]
+                phase = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ k_c)
+                geff_MM += 2 * np.einsum('x,xMN->MN', phase, V_xMM[1:],
+                                         optimize=True)
+                geff_MM = .5 * (geff_MM + geff_MM.conj().T)
+            kernels['V'][kpt.s, kpt.q] = geff_MM
 
-            g_sqMM[kpt.s, kpt.q] += geff_MM
-        # timer.stop('Potential matrix')
-
-        gp_MM = np.zeros((nao, nao), dtype)
-        # timer.start("Non-Local 1")
         # 2) Gradient of non-local part (projectors)
         P_aqMi = getattr(wfs, 'P_aqMi', None)
         # 2a) dH^a part has contributions from all atoms
         for kpt in kpt_u:
             # Matrix elements
-            gp_MM[:] = 0.0
+            gp_MM = np.zeros((nao, nao), dtype)
             for a_, dH1_sp in dH1_asp.items():
                 if a_ not in bfs.my_atom_indices:
                     continue
@@ -141,31 +145,33 @@ class Supercell:
                     P_Mi = P_aqMi[a_][kpt.q]
                 gp_MM += P_Mi.conj() @ dH1_ii @ P_Mi.T
             # wfs.gd.comm.sum(gp_MM)
-            g_sqMM[kpt.s, kpt.q] += gp_MM
-        # timer.stop("Non-Local 1")
+            kernels['D'][kpt.s, kpt.q] += gp_MM
 
-        # timer.start("Non-Local 2")
         # 2b) dP^a part has only contributions from the same atoms
         # For the contribution from the derivative of the projectors
         manytci = wfs.manytci
-        dPdR_aqvMi = manytci.P_aqMi(bfs.my_atom_indices, derivative=True)
+        local = [displaced] if displaced in bfs.my_atom_indices else []
+        dPdR_aqvMi = manytci.P_aqMi(local, derivative=True)
         for kpt in kpt_u:
-            gp_MM[:] = 0.0
-            dH_ii = unpack_hermitian(dH_asp[a][kpt.s])
-            if a in bfs.my_atom_indices:
+            if displaced in bfs.my_atom_indices:
                 if P_aqMi is None:
-                    P_Mi = kpt.P_aMi[a]
+                    P_Mi = kpt.P_aMi[displaced]
                 else:
-                    P_Mi = P_aqMi[a][kpt.q]
-                dP_Mi = dPdR_aqvMi[a][kpt.q][v]
+                    P_Mi = P_aqMi[displaced][kpt.q]
+                dP_Mi = dPdR_aqvMi[displaced][kpt.q][v]
+                dH_ii = unpack_hermitian(dH_asp[displaced][kpt.s])
                 P1HP_MM = dP_Mi.conj() @ dH_ii @ P_Mi.T
-                # Matrix elements
-                gp_MM += P1HP_MM + P1HP_MM.T.conjugate()
-            # wfs.gd.comm.sum(gp_MM)
-            # print(world.rank, a,v, kpt.k, bfs.my_atom_indices, gp_MM)
-            g_sqMM[kpt.s, kpt.q] += gp_MM
-        # timer.stop("Non-Local 2")
-        return g_sqMM
+                kernels['P'][kpt.s, kpt.q] = P1HP_MM + P1HP_MM.conj().T
+                setup = setups[displaced]
+                kernels['Q'][kpt.s, kpt.q] = (
+                    dP_Mi.conj() @ setup.dO_ii @ P_Mi.T)
+                # Nuclear R of Eq. (73) is minus the spatial nabla_iiv.
+                kernels['R'][kpt.s, kpt.q] = (
+                    -P_Mi.conj() @ setup.nabla_iiv[:, :, v] @ P_Mi.T)
+
+        if components:
+            return kernels
+        return sum(kernels[key] for key in ('V', 'D', 'P'))
 
     def calculate_supercell_matrix(
         self, calc: ASECalculator | dict, fd_name: str = "elph",
@@ -194,20 +200,15 @@ class Supercell:
             (default: None).
         """
 
-        # Supercell atoms
         atoms_N = self.atoms * self.supercell
-
         if isinstance(calc, dict):
             calc = self._create_gpaw_calculator(calc, fd_name)
-        else:
-            if not calc.initialized:
-                calc.initialize(atoms_N)
-                calc.initialize_positions(atoms_N)
-                assert calc.wfs.mode == "lcao", "LCAO mode required."
-                assert not calc.symmetry.point_group, \
-                    "Point group symmetry not supported"
-
-        # JSON cache
+        elif not getattr(calc, 'initialized', False):
+            calc.initialize(atoms_N)
+            calc.initialize_positions(atoms_N)
+        assert calc.wfs.mode == 'lcao', 'LCAO mode required.'
+        assert not calc.symmetry.point_group, (
+            'Point group symmetry unsupported.')
         supercell_cache = MultiFileJSONCache(self.supercell_name)
 
         # Extract useful objects from the calculator
@@ -222,22 +223,38 @@ class Supercell:
         # FIXME: Band parallelisation broken - M is band parallel
         assert bd.comm.size == 1
 
-        timer = calc.timer
+        # Equilibrium atomic Hamiltonian matrix (projector coefficients)
+        fd_cache = MultiFileJSONCache(fd_name)
+        fd_info = fd_cache['info']
+        if (tuple(fd_info['supercell']) != tuple(self.supercell) or
+                fd_info['natom'] != len(self.atoms)):
+            raise ValueError('Finite-displacement and projection supercells '
+                             'must match, including the primitive atom count.')
+        for key, value in [('cell', self.atoms.cell.array),
+                           ('numbers', self.atoms.numbers),
+                           ('positions', self.atoms.positions)]:
+            if key in fd_info and not np.allclose(fd_info[key], value):
+                raise ValueError(
+                    'Finite-displacement geometry mismatch: ' + key)
+        dH_asp = fd_cache["eq"]["dH_all_asp"]
+        if 'info' in supercell_cache and (
+                supercell_cache['info'].get('sc_version') != sc_version):
+            raise VersionError('Use a new output cache for PAW kernels.')
+        if not np.allclose(gd.cell_cv, atoms_N.cell.array / Bohr):
+            raise ValueError('Projection calculator cell does not match '
+                             'the finite-displacement supercell.')
 
         # Calculate finite-difference gradients (in Hartree / Bohr)
         V1t_xsG, dH1_xasp = self.calculate_gradient(fd_name, self.indices)
-
-        # New GPAW stores Vt_sG with full shape n_c independent of PBC;
-        # truncate to n_c along non-periodic axes where the sizes disagree.
+        # Preserve New GPAW's non-periodic coarse-grid compatibility.
         pb = (~gd.pbc_c) & (V1t_xsG.shape[-3:] != gd.n_c)
         if pb.any():
             slices = tuple(slice(1, None) if p else slice(None) for p in pb)
             V1t_xsG = V1t_xsG[..., slices[0], slices[1], slices[2]]
 
-        # Equilibrium atomic Hamiltonian matrix (projector coefficients)
-        fd_cache = MultiFileJSONCache(fd_name)
-        assert tuple(self.supercell) == tuple(fd_cache["info"]["supercell"])
-        dH_asp = fd_cache["eq"]["dH_all_asp"]
+        # Check that the grid is the same as in the calculator
+        assert np.all(V1t_xsG.shape[-3:] == (gd.N_c + gd.pbc_c - 1)), \
+            "Mismatch in grids."
 
         # Save basis information, after we checked the data is kosher
         with supercell_cache.lock("basis") as handle:
@@ -275,34 +292,29 @@ class Supercell:
                     parprint("%s-gradient of atom %u" %
                              (["x", "y", "z"][v], a))
 
-                    with timer('Supercell entry'):
-                        g_sqMM = self._calculate_supercell_entry(
-                            a, v, V1t_xsG[xinput], dH1_xasp[xinput],
-                            wfs, dH_asp, timer)
-                    # Extract R_c=(0, 0, 0) block by Fourier transforming
-                    if kd.gamma or kd.N_c is None:
-                        g_sMM = g_sqMM[:, 0]
-                    else:
-                        # Convert to array
-                        g_sMM_tmp = []
-                        for s in range(nspins):
-                            # bloch_to_real_space takes care of kd
-                            # parallel sum as well
-                            g_MM = tb.bloch_to_real_space(g_sqMM[s],
-                                                          R_c=(0, 0, 0))
-                            g_sMM_tmp.append(g_MM[0])  # [0] because of above
-                        g_sMM = np.array(g_sMM_tmp)
-                        del g_sMM_tmp
+                    kernels = self._calculate_supercell_entry(
+                        a, v, V1t_xsG[xinput], dH1_xasp[xinput], wfs, dH_asp,
+                        components=True
+                    )
 
-                    # Reshape to global unit cell indices
+                    # Extract R_c=(0, 0, 0) block by Fourier transforming
                     N = np.prod(self.supercell)
-                    # Number of basis function in the primitive cell
                     assert (nao % N) == 0, "Alarm ...!"
                     nao_cell = nao // N
-                    g_sNMNM = g_sMM.reshape((nspins, N, nao_cell, N, nao_cell))
-                    g_sNNMM = g_sNMNM.swapaxes(2, 3).copy()
-                    handle.save(g_sNNMM)
-
+                    entry = {}
+                    for key, g_sqMM in kernels.items():
+                        if kd.gamma or kd.N_c is None:
+                            g_sMM = g_sqMM[:, 0]
+                        else:
+                            g_sMM = np.array([
+                                tb.bloch_to_real_space(g_sqMM[s],
+                                                       R_c=(0, 0, 0))[0]
+                                for s in range(nspins)])
+                        g_sNMNM = g_sMM.reshape(nspins, N, nao_cell,
+                                                N, nao_cell)
+                        entry[key] = g_sNMNM.swapaxes(2, 3).copy()
+                    g_sNNMM = entry['V']
+                    handle.save(entry)
                 if xinput == 0:
                     with supercell_cache.lock("info") as handle:
                         if handle is not None:
@@ -391,7 +403,9 @@ class Supercell:
     @classmethod
     def load_supercell_matrix(cls, name: str = "supercell"
                               ) -> tuple[ArrayND, dict]:
-        """Load supercell matrix from cache.
+        """Load the pseudo-Hamiltonian derivative V+D+P from cache.
+
+        Energy-dependent PAW corrections require ElectronPhononMatrix.
 
         Parameters
         ----------
@@ -409,6 +423,9 @@ class Supercell:
         nx = natom * 3
         g_xsNNMM = np.empty([nx, ] + list(shape), dtype=dtype)
         for x in range(nx):
-            g_xsNNMM[x] = supercell_cache[str(x)]
+            entry = supercell_cache[str(x)]
+            if isinstance(entry, dict):
+                entry = sum(entry[key] for key in ('V', 'D', 'P'))
+            g_xsNNMM[x] = entry
         basis_info = supercell_cache["basis"]
         return g_xsNNMM, basis_info
