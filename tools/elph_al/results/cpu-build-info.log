@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------------------
+python-3.12.14   /workspace/work/current-venv/bin/python
+gpaw-26.7.1b1    /workspace/work/gpaw-current/gpaw/
+ase-3.30.0b1     /workspace/work/current-venv/lib/python3.12/site-packages/ase/
+numpy-2.5.4      /workspace/work/current-venv/lib/python3.12/site-packages/numpy/
+scipy-1.18.1     /workspace/work/current-venv/lib/python3.12/site-packages/scipy/
+gpaw_data-1.2.1  /workspace/work/current-venv/lib/python3.12/site-packages/gpaw_data/
+libxc-5.2.3      yes
+_gpaw            /workspace/work/gpaw-current/_gpaw.cpython-312-x86_64-linux-gnu.so
+MPI enabled      yes
+OpenMP enabled   no
+GPU enabled      no
+GPU-aware MPI    no
+cupy-fake        /workspace/work/gpaw-current/gpaw/gpu/cpupy/__init__.py
+MAGMA            no
+scalapack        yes
+Elpa             no
+FFTW             yes
+libvdwxc         no
+PAW-datasets (1) /workspace/work/current-venv/lib/python3.12/site-packages/gpaw_data/setups
+-------------------------------------------------------------------------------------------

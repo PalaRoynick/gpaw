@@ -1,0 +1,51 @@
+{
+  "displacements": {
+    "natom": 1,
+    "supercell": [
+      3,
+      3,
+      3
+    ],
+    "delta": 0.01,
+    "dr_version": 1
+  },
+  "projection": {
+    "sc_version": 1,
+    "natom": 1,
+    "supercell": [
+      7,
+      7,
+      7
+    ],
+    "gshape": [
+      1,
+      343,
+      343,
+      4,
+      4
+    ],
+    "gtype": "float64"
+  },
+  "potential_shape": [
+    1,
+    29,
+    29,
+    29
+  ],
+  "atom_count": 27,
+  "same_supercell": false,
+  "missing_projection_entries": [
+    "0",
+    "1",
+    "2"
+  ],
+  "basis": {
+    "M_a": [
+      0
+    ],
+    "nao_a": [
+      4
+    ]
+  },
+  "duplicate_mass_factor_Al": 0.19251592003912082
+}

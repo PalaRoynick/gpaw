@@ -1,0 +1,7 @@
+{
+  "pseudo_plus_augmentation_norm_error": 8.215650382226158e-15,
+  "translation_residual_Hartree_per_Bohr": 2.839138389930946e-15,
+  "expected_scale_Hartree_per_Bohr": 0.2858407863226158,
+  "relative_translation_residual": 1.0241033440710086e-14,
+  "definition": "g_uniform = (epsilon_final-epsilon_initial) * <psi_final|grad_r|psi_initial>_AE"
+}

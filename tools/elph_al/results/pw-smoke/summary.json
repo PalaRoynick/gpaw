@@ -1,0 +1,43 @@
+{
+  "method": "Direct PW; no LCAO projection",
+  "phonon_mean_minimum_images": true,
+  "K_highest_mode_longitudinal_overlap": 0.09275774720066267,
+  "initial_bands": [
+    1,
+    2,
+    3
+  ],
+  "initial_energies_eV": [
+    19.805802234841703,
+    19.805802234841778,
+    19.80580223484182
+  ],
+  "max_coupling_eV": {
+    "V": 0.3010300084149908,
+    "D": 0.0010056532724705915,
+    "P": 0.12872224355808015,
+    "R": 0.060643016767813904,
+    "total": 0.13540794681362286
+  },
+  "setup_fingerprint": "0292cae29f5d6237e50f6abdd43a7bdd",
+  "settings": {
+    "profile": "smoke",
+    "a": 4.04,
+    "supercell": [
+      3,
+      3,
+      3
+    ],
+    "ecut": 200,
+    "k_super": 2,
+    "k_primitive": 6,
+    "h": 0.2,
+    "delta": 0.01,
+    "basis": "dzp",
+    "points": 8,
+    "gpu_displacements": false,
+    "fd_cache": "/workspace/work/al-smoke3/elph",
+    "gamma_centered_supercell": false
+  },
+  "note": "Diagnostic settings; convergence not established."
+}

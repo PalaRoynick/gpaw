@@ -1,0 +1,10 @@
+{
+  "new_backend_on_GPU": false,
+  "old_energy_eV": -5.97815372037389,
+  "new_energy_eV": -5.978153720373805,
+  "max_eigenvalue_difference_eV": 1.1483606954243442e-08,
+  "mean_potential_difference_Hartree": 1.5299056726342242e-11,
+  "max_potential_difference_Hartree": 8.68003224852032e-10,
+  "max_onsite_difference_Hartree": 2.702034151980115e-10,
+  "max_force_difference_eV_per_A": 4.047631407932916e-15
+}

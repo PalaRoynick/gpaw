@@ -55,15 +55,20 @@ def main():
     parser.add_argument('--points', type=int, default=12,
                         help='points per segment, with both endpoint limits')
     parser.add_argument('--gpu-displacements', action='store_true')
+    parser.add_argument('--gamma-supercell',
+                        action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--stage', choices=['all', 'displacements', 'project',
                                             'bands', 'matrix'], default='all')
     args = parser.parse_args()
     if args.profile == 'archive' and args.fd_cache is None:
         parser.error('archive profile requires --fd-cache')
     repeat = args.repeat or dict(smoke=3, paper=4, archive=3)[args.profile]
+    gamma = args.gamma_supercell
+    if gamma is None:
+        gamma = args.profile != 'smoke'
     ecut = args.ecut or (600 if args.profile == 'paper' else 200)
     ks = args.k_super or dict(smoke=2, paper=3, archive=5)[args.profile]
-    kp = args.k_primitive or (12 if args.profile == 'paper' else 6)
+    kp = args.k_primitive or ks * repeat
     a = 4.079793 if args.profile == 'archive' else 4.04
     atoms = bulk('Al', 'fcc', a=a)
     sc = (repeat,) * 3
@@ -76,11 +81,13 @@ def main():
                     k_super=ks, k_primitive=kp, h=args.h, delta=args.delta,
                     basis=args.basis, points=args.points,
                     gpu_displacements=args.gpu_displacements, fd_cache=str(fd),
-                    gamma_centered_supercell=True)
+                    gamma_centered_supercell=gamma)
     manifest = out / 'settings.json'
-    if manifest.exists() and json.loads(manifest.read_text()) != json.loads(
-            json.dumps(settings)):
-        raise ValueError('Settings changed; use a new output directory.')
+    if manifest.exists():
+        previous = json.loads(manifest.read_text())
+        previous.setdefault('gamma_centered_supercell', False)
+        if previous != json.loads(json.dumps(settings)):
+            raise ValueError('Settings changed; use a new output directory.')
     if world.rank == 0:
         manifest.write_text(json.dumps(settings, indent=2) + '\n')
     os.chdir(out)
@@ -95,7 +102,7 @@ def main():
             extra['parallel'] = {'gpu': True}
         fd_options = dict(common, symmetry={})
         calc = engine(mode=PW(ecut),
-                      kpts={'size': (ks,) * 3, 'gamma': True}, h=args.h,
+                      kpts={'size': (ks,) * 3, 'gamma': gamma}, h=args.h,
                       txt='displacements.txt', **fd_options, **extra)
         runner = FreshDisplacementRunner(
             atoms, calc, supercell=sc, name=str(fd), delta=args.delta)
@@ -107,7 +114,7 @@ def main():
         if tuple(info['supercell']) != sc:
             raise ValueError('Cache supercell does not match --repeat')
         calc = GPAW(mode='lcao', basis=args.basis, gpts=grid,
-                    kpts={'size': (ks,) * 3, 'gamma': True},
+                    kpts={'size': (ks,) * 3, 'gamma': gamma},
                     parallel={'domain': 1, 'band': 1},
                     txt='projection.txt', **common)
         # No SCF needed: use the cached, self-consistent equilibrium D matrix.
@@ -121,10 +128,16 @@ def main():
         # Symmetry is safe for the self-consistent density. Only the final
         # explicit Bloch path must be evaluated without symmetry reduction.
         ground_options = dict(common, symmetry={})
-        calc = GPAW(mode='lcao', basis=args.basis, nbands='nao', h=args.h,
-                    kpts={'size': (kp,) * 3, 'gamma': True},
+        saved_grid = np.array(MultiFileJSONCache(str(fd))['eq'][
+            'Vt_sG'].shape[-3:])
+        if np.all(saved_grid % np.array(sc) == 0):
+            grid_options = {'gpts': tuple(saved_grid // np.array(sc))}
+        else:
+            grid_options = {'h': args.h}  # legacy noncommensurate grid
+        calc = GPAW(mode='lcao', basis=args.basis, nbands='nao',
+                    kpts={'size': (kp,) * 3, 'gamma': gamma},
                     txt='ground-state.txt',
-                    **ground_options)
+                    **ground_options, **grid_options)
         atoms.calc = calc
         atoms.get_potential_energy()
         pathcalc = calc.fixed_density(kpts=q, symmetry='off', nbands='nao',

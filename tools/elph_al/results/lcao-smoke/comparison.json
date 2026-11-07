@@ -1,0 +1,20 @@
+{
+  "status": "Unconverged diagnostic; no accuracy claim",
+  "branch_order_mismatch": true,
+  "K_highest_mode_longitudinal_overlap": 0.09275774720066268,
+  "reference": "Figure 2 plotted curves, not raw author data",
+  "metrics": {
+    "total": {
+      "rms_error_eV": 0.03292085413105005,
+      "max_error_eV": 0.08624066351383129
+    },
+    "V": {
+      "rms_error_eV": 0.10376130549571394,
+      "max_error_eV": 0.21404830883141432
+    },
+    "P": {
+      "rms_error_eV": 0.10622549709938099,
+      "max_error_eV": 0.20697412813105306
+    }
+  }
+}

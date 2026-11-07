@@ -20,9 +20,9 @@ it does not replace the PAW overlap and transformation corrections.
   centered on different atoms.
 * The Bloch reconstruction phases were reversed. A direct grid-integral
   test at k=q=(1/3,0,0) now checks both signs against GPAW's actual basis.
-* LCAO potential matrices store the transpose of the physical operator. The
-  cache construction now explicitly converts the local matrix to the physical
-  bra/ket convention. A direct complex-k grid integral checks this conversion.
+* The legacy direct LCAO potential-matrix API returns a transposed operator.
+  The cache uses the faster cell-block construction with physical Bloch phases
+  and Hermitian completion. A direct complex-k grid integral checks it.
   Projector overlaps are `<p|basis>`; their original conjugation convention is
   retained. A grid-integral check prevented incorrectly changing that convention.
 * The 25.7 checkout selected the equilibrium atomic Hamiltonian outside the
@@ -151,7 +151,8 @@ above. Use a **separate environment and clean build tree** for CPU and CUDA:
 ```
 python3 -m venv .venv-cuda
 . .venv-cuda/bin/activate
-python -m pip install --upgrade pip 'setuptools>=77.0.3' numpy
+python -m pip install --upgrade pip 'setuptools>=77.0.3' numpy pybind11
+python -m pip install -r tools/elph_al/requirements.txt
 export CUDA_HOME=/usr/local/cuda
 export GPAW_CUDA_ARCH=80  # V100=70, A100=80, RTX 30=86, H100=90
 export GPAW_CONFIG="$PWD/tools/elph_al/siteconfig_cuda.py"
@@ -198,9 +199,11 @@ python tools/elph_al/plot.py runs/al-smoke \
     --reference tools/elph_al/reference/chaput-figure2.csv
 ```
 
-The smoke profile uses PBE, a=4.04 Angstrom, PW(200 eV), h=0.20 Angstrom,
-a 3³ **primitive** supercell (27 atoms), 2³ Gamma-centered supercell k points, a 6³
-Gamma-centered primitive electronic mesh, dzp, and ±0.01 Angstrom displacements.
+The smoke profile uses PBE, a=4.04 Angstrom, PW(200 eV), h<=0.20 Angstrom,
+a 3³ **primitive** supercell (27 atoms), 2³ shifted supercell k points, a matched 6³
+shifted primitive electronic mesh, dzp, and ±0.01 Angstrom displacements.
+The actual primitive grid is matched to the saved displacement grid when its
+dimensions are divisible by the repeats; inspect the log for actual spacing.
 It is an execution/debugging test, not a convergence claim.
 
 For MPI, export `GPAW_MPI_BACKEND=cgpaw` to select the compiled MPI backend
@@ -262,11 +265,11 @@ already supplies the exact cubic-cell geometry for Al without band folding. Do n
 Start a convergence series (new directory for each setting):
 
 ```
-python tools/elph_al/run.py --profile paper --repeat 3 --k-super 4 \
+python tools/elph_al/run.py --profile paper --repeat 3 --k-super 6 \
     --output runs/al-p3
-python tools/elph_al/run.py --profile paper --repeat 4 --k-super 3 \
+python tools/elph_al/run.py --profile paper --repeat 4 --k-super 5 \
     --output runs/al-p4
-python tools/elph_al/run.py --profile paper --repeat 5 --k-super 3 \
+python tools/elph_al/run.py --profile paper --repeat 5 --k-super 4 \
     --output runs/al-p5
 ```
 
@@ -288,9 +291,12 @@ python tools/elph_al/extract_reference.py PhysRevB.100.174304.pdf \
     tools/elph_al/reference/chaput-figure2.csv
 ```
 
-The Gamma-centered mesh is intentional: a shifted even Monkhorst-Pack mesh
-in an fcc primitive rhombohedral cell can break cubic sampling symmetry and
-change the ordering/polarizations of nearly crossing phonon branches.
+The paper/conventional profiles use Gamma-centered meshes. The inexpensive
+smoke profile uses a shifted mesh known to execute with positive phonons, but
+a shifted even mesh in a primitive fcc cell breaks full cubic sampling symmetry.
+Its saved K phonon ordering differs from the paper. Gamma centering alone is
+not a convergence fix: `--gamma-supercell` at 2³ supercell k points produced
+imaginary branches and was rejected. Increase the k mesh for either choice.
 Always inspect the saved modes against Figure 1.
 
 The V,D,P,R split is PAW-dataset dependent. A different PAW code/dataset need
@@ -413,3 +419,59 @@ matches the paper's longitudinal state. If this is below 0.8, the plot and
 comparison report a branch-order mismatch: the curve is a diagnostic and must
 not be called a reproduction of Figure 2. Dense k and grid convergence should
 resolve such ordering before quantitative comparison.
+
+
+## SLURM templates for the available node
+
+The CPU template requests **24 MPI tasks on one node** and 96 GiB RAM, within
+the reported 24 available cores and approximately 630 GB host memory. The
+GPU template requests **one GPU**, eight CPU cores and 96 GiB host RAM. Both
+default to the 32-atom reference; the 108/256-atom variants are selected by
+`ELPH_REPEAT=3/4`. These jobs have not been submitted to your cluster.
+
+Build separate CUDA environments for the two GPU architectures, from separate
+clean source checkouts/worktrees:
+
+```
+# V100 environment: CUDA 12.x supporting Volta
+export GPAW_CUDA_ARCH=70
+# A100 environment instead:
+export GPAW_CUDA_ARCH=80
+# Optionally point nvcc at a toolkit-compatible host compiler:
+export GPAW_CUDA_CCBIN=/path/to/g++
+```
+
+The CUDA configuration is `siteconfig_cuda.py`. Do not install CPU, V100 and
+A100 editable builds into the same source tree: their extension modules would
+overwrite one another. Activate the appropriate environment for each job.
+No GPU result is validated merely by selecting an architecture or passing
+CPU emulation. Start with the 32-atom job on A100, then repeat it on V100 and
+compare components/forces/phonons. Larger cells need GPU memory sizing.
+
+The GPU template first runs `check_backend_gauge.py --gpu`: a small physical
+Old CPU versus New GPU comparison of eigenvalues, local potentials, on-site
+Hamiltonians and forces. It stops before the dense job if these differ beyond
+the specified tolerances. The same pilot without `--gpu` passed for the two
+CPU backends here; real GPU execution remains to be checked on your node.
+
+Submit from the corresponding source checkout root (replace partition and
+absolute environment/scratch paths):
+
+```
+sbatch --partition=CPU_PARTITION \
+  --export=ALL,GPAW_VENV=/absolute/cpu-venv,ELPH_RUN_ROOT=/scratch/al-elph \
+  tools/elph_al/slurm/reference_cpu.slurm
+sbatch --partition=A100_PARTITION \
+  --export=ALL,GPAW_VENV=/absolute/a100-venv,ELPH_RUN_ROOT=/scratch/al-elph-a100 \
+  tools/elph_al/slurm/reference_gpu.slurm
+sbatch --partition=V100_PARTITION \
+  --export=ALL,GPAW_VENV=/absolute/v100-venv,ELPH_RUN_ROOT=/scratch/al-elph-v100 \
+  tools/elph_al/slurm/reference_gpu.slurm
+```
+
+No partition/account/module names were invented. Use the cluster's MPI and
+math-library paths in the build configuration. Return `summary.json`,
+`comparison.json`, `translation-check.json`, `couplings.csv`,
+`matrix-elements.npz`, selected-band plots and the SCF/SLURM logs for review.
+Keep the large raw displacement caches on your filesystem. Include the
+`backend-check.json` pilot result when returning GPU data.

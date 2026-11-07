@@ -1,0 +1,25 @@
+{
+  "status": "Rejected before elph normalization",
+  "settings": {
+    "profile": "smoke",
+    "a": 4.04,
+    "supercell": [
+      3,
+      3,
+      3
+    ],
+    "ecut": 200,
+    "k_super": 2,
+    "k_primitive": 6,
+    "h": 0.2,
+    "delta": 0.01,
+    "basis": "dzp",
+    "points": 8,
+    "gpu_displacements": false,
+    "fd_cache": "/workspace/work/al-gamma/elph",
+    "gamma_centered_supercell": true
+  },
+  "minimum_phonon_energy_eV": -0.02435773325951084,
+  "imaginary_modes_away_from_Gamma": 15,
+  "note": "A Gamma-centered mesh preserves cubic sampling but the 2^3 mesh is underconverged."
+}

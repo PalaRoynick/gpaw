@@ -1,0 +1,23 @@
+{
+  "initial_bands": [
+    1,
+    2,
+    3
+  ],
+  "K_highest_mode_longitudinal_overlap": 0.09275774720066268,
+  "phonon_mean_minimum_images": true,
+  "initial_energies_eV": [
+    20.340605537929587,
+    20.340785834705965,
+    20.340785834705994
+  ],
+  "minimum_phonon_energy_eV": -3.9485074757408106e-10,
+  "max_coupling_eV": {
+    "V": 0.250690216256744,
+    "D": 0.0006400376629884539,
+    "P": 0.09720866130640042,
+    "R": 0.04294464065081789,
+    "total": 0.11895631601312011
+  },
+  "note": "Diagnostic calculation; convergence not established."
+}

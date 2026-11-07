@@ -1,0 +1,5 @@
+Imported /workspace/work/current-cuda-installed/gpaw/__init__.py
+CUDA kernels compiled True
+New GPAW CPU energy -3.5470713118166897
+Potential <class 'numpy.ndarray'> (1, 9, 9, 9)
+Host serialization check passed

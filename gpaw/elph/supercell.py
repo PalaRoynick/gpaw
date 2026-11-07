@@ -200,29 +200,7 @@ class Supercell:
             (default: None).
         """
 
-        atoms_N = self.atoms * self.supercell
-        if isinstance(calc, dict):
-            calc = self._create_gpaw_calculator(calc, fd_name)
-        elif not getattr(calc, 'initialized', False):
-            calc.initialize(atoms_N)
-            calc.initialize_positions(atoms_N)
-        assert calc.wfs.mode == 'lcao', 'LCAO mode required.'
-        assert not calc.symmetry.point_group, (
-            'Point group symmetry unsupported.')
         supercell_cache = MultiFileJSONCache(self.supercell_name)
-
-        # Extract useful objects from the calculator
-        wfs = calc.wfs
-        gd = calc.wfs.gd
-        kd = calc.wfs.kd
-        bd = calc.wfs.bd
-        nao = wfs.setups.nao
-        nspins = wfs.nspins
-        # FIXME: Domain parallelisation broken
-        assert gd.comm.size == 1
-        # FIXME: Band parallelisation broken - M is band parallel
-        assert bd.comm.size == 1
-
         # Equilibrium atomic Hamiltonian matrix (projector coefficients)
         fd_cache = MultiFileJSONCache(fd_name)
         fd_info = fd_cache['info']
@@ -240,6 +218,28 @@ class Supercell:
         if 'info' in supercell_cache and (
                 supercell_cache['info'].get('sc_version') != sc_version):
             raise VersionError('Use a new output cache for PAW kernels.')
+        atoms_N = self.atoms * self.supercell
+        if isinstance(calc, dict):
+            calc = self._create_gpaw_calculator(calc, fd_name)
+        elif not getattr(calc, 'initialized', False):
+            calc.initialize(atoms_N)
+            calc.initialize_positions(atoms_N)
+        assert calc.wfs.mode == 'lcao', 'LCAO mode required.'
+        assert not calc.symmetry.point_group, (
+            'Point group symmetry unsupported.')
+
+        # Extract useful objects from the calculator
+        wfs = calc.wfs
+        gd = calc.wfs.gd
+        kd = calc.wfs.kd
+        bd = calc.wfs.bd
+        nao = wfs.setups.nao
+        nspins = wfs.nspins
+        # FIXME: Domain parallelisation broken
+        assert gd.comm.size == 1
+        # FIXME: Band parallelisation broken - M is band parallel
+        assert bd.comm.size == 1
+
         if not np.allclose(gd.cell_cv, atoms_N.cell.array / Bohr):
             raise ValueError('Projection calculator cell does not match '
                              'the finite-displacement supercell.')

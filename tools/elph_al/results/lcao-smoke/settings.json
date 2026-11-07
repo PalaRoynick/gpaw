@@ -1,0 +1,19 @@
+{
+  "profile": "smoke",
+  "a": 4.04,
+  "supercell": [
+    3,
+    3,
+    3
+  ],
+  "ecut": 200,
+  "k_super": 2,
+  "k_primitive": 6,
+  "h": 0.2,
+  "delta": 0.01,
+  "basis": "dzp",
+  "points": 8,
+  "gpu_displacements": false,
+  "fd_cache": "/workspace/work/al-smoke3/elph",
+  "gamma_centered_supercell": false
+}
